@@ -1,0 +1,2988 @@
+# load data
+
+import os
+cwd = os.getcwd()
+print(cwd)
+
+
+# read the CSV file
+original_df = pd.read_csv('C:/Users/yourname/Downloads/Ulta Skincare Reviews.csv.zip')
+
+# import packages 
+
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+import nltk
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
+from nltk.tokenize import word_tokenize
+from nltk.stem import PorterStemmer
+from nltk.stem import WordNetLemmatizer
+from sklearn.feature_extraction.text import TfidfVectorizer
+
+import re
+from wordcloud import WordCloud, STOPWORDS
+from collections import Counter
+
+
+# Data Prep
+
+# create color scheme for visualizations
+# Define Dermologica brand colors
+colors = ['#55b1e5', '#0085ca', '#0067a9', '#5c5d5d']
+sns.set_palette('deep', desat=0.6)
+sns.set_style('darkgrid', {'axes.linewidth': 2, 'axes.edgecolor': 'black'}) # sets border
+sns.set_style('darkgrid', {'axes.linewidth': 2, 'axes.edgecolor': 'black'}) # sets style
+plt.rcParams['figure.figsize'] = [8, 6] #figure size
+
+
+# create copy of original df
+df = original_df.copy()
+df.describe()
+
+
+# Check for duplicates
+print(df.duplicated().sum())
+
+# Count the number of duplicated records of 'Review_Text'
+num_duplicates = df.duplicated(subset=['Review_Text']).sum()
+print(f'Total number of duplicated records based on Review_Text: {num_duplicates}')
+
+
+# identify exact duplicate records
+exact_duplicate_mask = df.duplicated(keep=False)
+exact_duplicate_records = df[exact_duplicate_mask]
+print(exact_duplicate_records[:60])
+print(df.duplicated().sum())
+#df = df.drop_duplicates()
+
+# Exploratory Data Analysis
+
+
+print(df.head()) 
+df.describe() #numeric vars
+print(df.shape)
+
+# check for missing values in each column
+missing_values = df.isnull().sum()
+print(missing_values)
+
+# remove rows with missing data
+df = df.dropna()
+
+
+
+
+# Create an ID column
+# Note: this will create an additional ID var each time code runs
+df.reset_index(inplace=True)
+
+# Rename the column to "ID"
+df.rename(columns={'index': 'ID'}, inplace=True)
+
+# Explore by product
+
+
+
+# define function to clean text
+def clean_text(text):
+    # check if the input text is a string
+    if isinstance(text, str):
+        
+        # convert to lowercase
+        text = text.lower()
+      
+        # replace contractions with expanded forms
+        text = re.sub(r"\'s", " is", text)
+        text = re.sub(r"\'m", " am", text)
+        text = re.sub(r"\'re", " are", text)
+        text = re.sub(r"\'ve", " have", text)
+        text = re.sub(r"n\'t", " not", text)
+        text = re.sub(r"\'d", " would", text)
+        text = re.sub(r"\'ll", " will", text)
+       
+        # remove non-alphanumeric characters
+        text = re.sub(r'[^\w\s]', ' ', text)
+        # remove digits
+        text = re.sub(r'\d+', ' ', text)
+        
+        # remove stopwords
+        stop_words = set(stopwords.words('english'))
+        stop_words.update(['really', 'use', 'using', 'face', 'one', 'used', 'skin', 'product', 'dermalogica', 'daily', 'microfoliant', 'superfoliant', 'thermafoliant' ]) #not helpful words
+        
+        # tokenize text
+        text_tokens = nltk.word_tokenize(text)
+        tokens_without_sw = [word for word in text_tokens if word.lower() not in stop_words]
+        
+        # lemmatize words
+        lemmatizer = WordNetLemmatizer()
+        lemmatized_tokens = [lemmatizer.lemmatize(token) for token in tokens_without_sw]
+        # join tokens back into a string
+        clean_text = ' '.join(lemmatized_tokens)
+        return clean_text
+    else:
+        return ''
+    
+"---------------------------------------------------------------"   
+    
+# check results of clean text
+
+# Select a sample of reviews
+sample_reviews = df['Review_Text'].sample(n=10)
+
+# Apply clean_text function to the sample of reviews
+cleaned_reviews = sample_reviews.apply(clean_text)
+
+# Print the original and cleaned reviews for comparison
+for i in range(len(sample_reviews)):
+    print('Original Review:\n', sample_reviews.iloc[i])
+    print('Cleaned Review:\n', cleaned_reviews.iloc[i])
+    print('----------------------------------------------------------\n')
+
+     
+    
+    
+# create a list of dictionaries with cleaned text
+cleaned_dict = []
+for i, review in enumerate(df['Review_Text']):
+    review_dict = {}
+    review_dict['review_text'] = clean_text(review)
+    cleaned_dict.append(review_dict)
+
+# print the first 10 cleaned reviews
+for i in range(10):
+    print(f"Review {i+1}: {cleaned_dict[i]['review_text']}")
+    
+    
+# create a list variable with all cleaned review texts
+clean_text_list = [review['review_text'] for review in cleaned_dict]
+print(clean_text_list[:5])
+print(type(clean_text_list))   
+    
+    
+    # create a string variable with all cleaned review texts
+cleaned_text_string = ''
+for review in cleaned_dict:
+    cleaned_text_string += review['review_text'] + ' '
+
+    
+    # create a new column in the dataframe with the cleaned text
+df['clean_review_text'] = df['Review_Text'].apply(clean_text)
+    
+
+# take a look at nltk Stop words
+SW = nltk.corpus.stopwords.words('english')
+print(SW, len(SW))
+# note the punctuation
+
+# Reviews 
+# length of reviews by product
+
+# Split the review_text column into words and count the number of words
+df['Review_Length'] = df['Review_Text'].apply(lambda x: len(x.split()))
+
+# Group the DataFrame by product and review length and count the number of reviews
+grouped_df = df.groupby(['Product', 'Review_Length'])['Review_Text'].count().reset_index()
+
+# Pivot the DataFrame so that each product is a column
+pivoted_df = grouped_df.pivot(index='Review_Length', columns='Product', values='Review_Text')
+
+# Plot a histogram for each product
+pivoted_df.plot(kind='hist', alpha=0.5)
+
+# Set the x and y axis labels
+plt.title('Length of Review_Text by Product')
+plt.xlabel('Number of Words')
+plt.ylabel('Frequency')
+
+# Show the plot
+plt.show()
+
+
+
+
+
+# review length by product- individual plots
+
+# Split the review text into words and count the number of words
+df['Review_Length'] = df['Review_Text'].apply(lambda x: len(x.split()))
+
+# Create a list of products
+products = df['Product'].unique()
+
+# Create a figure with four subplots
+fig, axs = plt.subplots(2, 2, figsize=(10, 10))
+
+# Plot a histogram for each product on a different subplot
+for i, product in enumerate(products):
+    row = i // 2
+    col = i % 2
+    product_df = df[df['Product'] == product]
+    axs[row, col].hist(product_df['Review_Length'])
+    axs[row, col].set_title(product)
+    axs[row, col].set_xlabel('Number of Words')
+    axs[row, col].set_ylabel('Frequency')
+
+# Adjust the spacing between subplots
+fig.tight_layout()
+
+# Show the plot
+plt.show()# we see the spike in hydro masque exfoliant
+
+
+# Reviews 
+# sentence length
+
+# Split the review text into sentences and count the number of sentences
+df['num_sentences'] = df['Review_Text'].apply(lambda x: len(nltk.sent_tokenize(x)))
+
+# Group by product and count the number of reviews by length in sentences
+grouped_df = df.groupby(['Product', 'num_sentences'])['Review_Text'].count().reset_index()
+
+# Pivot the data to create a wide-form dataframe with each length as a column
+pivoted_df = grouped_df.pivot(index='num_sentences', columns='Product', values='Review_Text')
+
+# Plot a histogram of the number of reviews by length in sentences for each product
+pivoted_df.plot(kind='bar', alpha=0.5, width = 1.5)
+
+# Rotate x-axis labels
+plt.xticks(rotation=0)
+
+# Set the x and y axis labels
+plt.title('Number of Reviews by Length in Sentences')
+plt.xlabel('Number of Sentences')
+plt.ylabel('Number of Reviews')
+
+# Show plot
+plt.show()
+
+
+# Review 
+# sentences by product- individual plots
+
+# Split the review text into sentences and count the number of sentences
+df['num_sentences'] = df['Review_Text'].apply(lambda x: len(nltk.sent_tokenize(x)))
+
+# Group by product and count the number of reviews by length in sentences
+grouped_df = df.groupby(['Product', 'num_sentences'])['Review_Text'].count().reset_index()
+
+# Loop through each product and create a separate plot
+for product in grouped_df['Product'].unique():
+    # Filter the data to include only the current product
+    subset_df = grouped_df[grouped_df['Product'] == product]
+    
+    # Pivot the data to create a wide-form dataframe with each length as a column
+    pivoted_df = subset_df.pivot(index='num_sentences', columns='Product', values='Review_Text')
+
+    # Plot a histogram of the number of reviews by length in sentences for the current product
+    pivoted_df.plot(kind='bar', alpha=0.5, figsize=(10,5), width=1.1)
+
+    # Rotate x-axis labels
+    plt.xticks(rotation=0)
+
+    # Set the x and y axis labels
+    plt.title(f'Number of Reviews by Length in Sentences ({product})')
+    plt.xlabel('Number of Sentences')
+    plt.ylabel('Density')
+
+    # Show plot
+    plt.show()
+
+
+#RawText
+# creating diff vars for text
+print(len(df['Review_Text'])) #for reference
+
+
+#  raw reviews as list
+text_list = df['Review_Text'].tolist()
+print(type(text_list))
+print(text_list[:5]) # first 5 reviews
+print(len(text_list))
+
+# raw reviews into a string (concatenate)
+text_string = ''
+for review in df['Review_Text']:
+    text_string += str(review)
+print(type(text_string))
+print(text_string[:25]) # first 25 charcters
+print(len(text_string))
+
+
+# create dictionary
+# Convert DataFrame to a list of dictionaries
+dict_list = df.to_dict('records')
+
+# Print the list of dictionaries
+print(dict_list[:5])
+print(len(dict_list))
+
+
+
+
+# UP VOTES #
+
+from tabulate import tabulate
+
+df["Review_Upvotes"] = df["Review_Upvotes"].astype(int)
+# calculate summary statistics
+stats = df['Review_Upvotes'].describe()
+
+# format table
+table = []
+for key, value in stats.items():
+    table.append([key.capitalize(), value])
+
+# print table
+print(tabulate(table, headers=['Statistic', 'Value'], tablefmt='pipe'))
+
+# UP VOTES #
+# outliers 
+
+# calculate the z-score
+mean = np.mean(df['Review_Upvotes'])
+std = np.std(df['Review_Upvotes'])
+z_score = (df['Review_Upvotes'] - mean) / std
+
+# define the threshold for outliers
+threshold = 3
+
+# identify outliers
+outliers = df['Review_Upvotes'][z_score > threshold]
+
+# print
+outliers_sorted = outliers.sort_values(ascending=True)
+print(outliers_sorted)
+
+
+# standardize the data using Z-score scaling
+mean = np.mean(df['Review_Upvotes'])
+std = np.std(df['Review_Upvotes'])
+df['Review_Upvotes_zscore'] = (df['Review_Upvotes'] - mean) / std
+
+# identify outliers using the standardized data
+threshold = 3
+outliers = df['Review_Upvotes'][df['Review_Upvotes_zscore'] > threshold]
+
+# print the outliers in ascending order
+outliers_sorted = outliers.sort_values(ascending=True)
+print(outliers_sorted)
+
+print(len(outliers_sorted))
+
+# upvotes
+# histogram of upvotes
+
+
+# convert 'Review_Upvotes' column to string type
+df['Review_Upvotes'] = df['Review_Upvotes'].astype(str)
+
+# create a new column 'upvotes' by extracting the upvotes count using regex
+df['upvotes'] = df['Review_Upvotes'].str.extract(r'^(\d+)')
+
+# convert the 'upvotes' column to numeric data type
+df['upvotes'] = pd.to_numeric(df['upvotes'])
+
+# Show distribution of upvotes
+sns.histplot(df['upvotes'], kde=False, bins=[i+0.5 for i in range(1,84)], edgecolor='black')
+
+# Set the axis labels and title
+#plt.hist(upvotes,bins=[i+0.5 for i in range(1,13)])
+plt.xlabel('Upvotes')
+plt.ylabel('Frequency')
+plt.title('Histogram of Upvotes')
+
+plt.show()
+
+
+
+# upvotes
+# histogram non-zero upvotes
+df_no_zeros = df[df['upvotes'] != 0]
+
+# Show distribution of non-zero downvotes
+ax = sns.histplot(df_no_zeros['upvotes'], kde=False, bins=[i+0.5 for i in range(1,42)], edgecolor='black')
+
+# Set the axis labels and title
+plt.xlabel('Upvotes')
+plt.ylabel('Count')
+plt.title('Distribution of Non-Zero Upvotes (Binned by 42)')
+
+# Add labels to each bar
+for p in ax.patches:
+    ax.annotate(str(p.get_height()), (p.get_x() + p.get_width()/2., p.get_height()),
+                ha='center', va='bottom')
+
+plt.show()
+
+
+# UP VOTES #
+# view reviews with most upvotes
+
+# change to int for sorting
+df["Review_Upvotes"] = df["Review_Upvotes"].astype(int)
+
+# comments with highest upvotes, 
+#ID and num of upvotes
+
+# sort the DataFrame by number of upvotes
+sorted_df = df.sort_values(by='upvotes', ascending=False)
+
+# get the first 10 comments with the most upvotes
+top_comments = sorted_df.head(10)
+
+# print the ID, comment, and number of upvotes for each top comment
+for index, row in top_comments.iterrows():
+    print(f"ID: {row['ID']}\nComment: {row['Review_Text']}\nNumber of Upvotes: {row['upvotes']}\n")
+
+
+# UP VOTES #
+# top upvote comments by product
+# group the DataFrame by 'Product_Name'
+grouped_df = df.groupby('Product')
+
+# loop through each group and get the top 3 comments
+for name, group in grouped_df:
+    print(f"Product: {name}")
+    top_comments = group.sort_values(by='Review_Upvotes', ascending=False).head(3)
+    for index, row in top_comments.iterrows():
+        print(f"ID: {row['ID']}\nComment: {row['Review_Text']}\nNumber of Upvotes: {row['Review_Upvotes']}\n")
+
+
+max_upvotes_index = df["Review_Upvotes"].idxmax()
+print(df.loc[max_upvotes_index, "Review_Text"])
+
+
+# define bigrams function
+
+def get_bigrams(text):
+    # Tokenize the text into words
+    tokens = nltk.word_tokenize(text)
+    
+    # Create bigrams from the words
+    bigrams = []
+    for i in range(len(tokens) - 1):
+        bigram = (tokens[i], tokens[i+1])
+        bigrams.append(bigram)
+        
+    # Count the frequency of each bigram
+    bigram_counts = Counter(bigrams)
+    
+    return bigram_counts
+
+
+
+
+# UP VOTES #
+# bigrams of all upvoted reviews
+
+# filter the dataframe to only include rows with non-zero Review_Downvotes values
+filtered_upvotes = df.loc[df['Review_Upvotes'] != 0]
+
+# sort the filtered DataFrame by number of votes
+sorted_upvotes = filtered_upvotes.sort_values(by='Review_Upvotes', ascending=False)
+
+# Concatenate the top comments into a single string
+top_comments_upvotes = ' '.join(sorted_upvotes['clean_review_text'].tolist())
+
+# Call get_bigrams to get the Counter object of bigrams
+bigram_upvotes = get_bigrams(top_comments_upvotes)
+
+# Get the top 10 bigrams using the most_common method
+top_bigram_upvotes= bigram_upvotes.most_common(15)
+
+# Loop through the top bigrams and print them
+for bigram, count in top_bigram_upvotes:
+    print(bigram, count)
+    
+    
+# add face and leaves to stopwords
+
+
+
+#downvotes
+
+# bigrams of all downvoted reviews
+
+# filter the dataframe to only include rows with non-zero Review_Downvotes values
+filtered_upvotes = df.loc[df['Review_Downvotes'] != 0]
+
+# sort the filtered DataFrame by number of votes
+sorted_upvotes = filtered_upvotes.sort_values(by='Review_Downvotes', ascending=False)
+
+# Concatenate the top comments into a single string
+top_comments_upvotes = ' '.join(sorted_upvotes['clean_review_text'].tolist())
+
+# Call get_bigrams to get the Counter object of bigrams
+bigram_upvotes = get_bigrams(top_comments_upvotes)
+
+# Get the top 10 bigrams using the most_common method
+top_bigram_upvotes= bigram_upvotes.most_common(15)
+       
+        
+# Loop through the top bigrams and print them
+for bigram, count in top_bigram_upvotes:
+    print(bigram, count)
+    
+    
+# add face and leaves to stopwords
+
+
+
+# top bigrams per product
+
+# Define a function to get the top 15 bigrams for a given DataFrame
+def get_top_bigrams(df):
+    # Concatenate the top comments into a single string
+    comments = ' '.join(df['clean_review_text'].tolist())
+
+    # Call get_bigrams to get the Counter object of bigrams
+    bigram_counter = get_bigrams(comments)
+
+    # Get the top bigrams using the most_common method
+    top_bigrams = bigram_counter.most_common(15)
+
+    return top_bigrams
+
+# Group the DataFrame by product and apply the get_top_bigrams function to each group
+top_bigrams_by_product = df.groupby('Product').apply(get_top_bigrams)
+
+# Loop through the top bigrams for each product and print them
+for product, top_bigrams in top_bigrams_by_product.iteritems():
+    print('\nProduct:', product)
+    for bigram, count in top_bigrams:
+        print(bigram, count)
+
+
+
+
+#word cloud of upvote comments
+
+# sort dataframe by upvotes in descending order
+df_sorted = df.sort_values(by=['upvotes'], ascending=False)
+
+# get the comments with non-zero upvotes
+upvoted_comments = df_sorted[df_sorted['upvotes'] > 0]['clean_review_text']
+
+# combine all upvoted comments into a single string
+text = ' '.join(upvoted_comments)
+
+# generate a wordcloud for the upvoted comments
+
+wordcloud = WordCloud(width=800, height=800, background_color='white',
+                          color_func=lambda *args, **kwargs: colors[np.random.randint(0, len(colors))],).generate(text)
+
+# Set the title of the word cloud
+title = 'Word Cloud of Upvoted Reviews- Updated'
+
+# Create a figure and axis for the plot
+fig, ax = plt.subplots()
+
+# Add the word cloud to the axis
+ax.imshow(wordcloud, interpolation='bilinear')
+ax.set_title(title)
+
+# Turn off the axis ticks and labels
+ax.axis('off')
+
+# Show the plot
+plt.show()
+
+#downvotes  #
+
+# histogam
+df["Review_Downvotes"] = df["Review_Downvotes"].astype(int)
+
+# convert 'Review_Upvotes' column to string type
+df['Review_Downvotes'] = df['Review_Downvotes'].astype(str)
+
+# create a new column 'upvotes' by extracting the upvotes count using regex
+df['downvotes'] = df['Review_Downvotes'].str.extract(r'^(\d+)')
+
+# convert the 'upvotes' column to numeric data type
+df['downvotes'] = pd.to_numeric(df['downvotes'])
+
+
+# Show distribution of downvotes
+sns.histplot(df['downvotes'], kde=False, bins=84)
+
+# Set the axis labels and title
+plt.xlabel('Downvotes')
+plt.ylabel('Count')
+plt.title('Distribution of Downvotes')
+plt.show()
+
+# get descriptive statistics on downvotes
+downvotes_stats = df['downvotes'].describe()
+
+# print the statistics
+print(downvotes_stats)
+
+#highest num of downvotes is 35
+
+
+#downvotes
+# histogram non-zero downvotes
+df_no_zeros = df[df['downvotes'] != 0]
+
+# Show distribution of non-zero downvotes
+ax = sns.histplot(df_no_zeros['downvotes'], kde=False, bins=[i+0.5 for i in range(1,37)], edgecolor='black')
+
+# Set the axis labels and title
+plt.xlabel('Downvotes')
+plt.ylabel('Count')
+plt.title('Distribution of Non-Zero Downvotes (Binned by 20)')
+
+# Add labels to each bar
+for p in ax.patches:
+    ax.annotate(str(p.get_height()), (p.get_x() + p.get_width()/2., p.get_height()),
+                ha='center', va='bottom')
+
+plt.show()
+
+
+#downvotes
+# outliers
+# calculate the z-score
+
+# make sure its int. 
+df['Review_Downvotes'] = df['Review_Downvotes'].astype(int)
+
+mean = np.mean(df['Review_Downvotes'])
+std = np.std(df['Review_Downvotes'])
+z_score = (df['Review_Downvotes'] - mean) / std
+
+# define the threshold for outliers
+threshold = 3
+
+# identify outliers
+outliers = df['Review_Downvotes'][z_score > threshold]
+
+# print
+outliers_sorted = outliers.sort_values(ascending=True)
+#print(outliers_sorted)
+
+#downvote
+# comments with most downvotes
+
+# change to int for sorting
+df["Review_Downvotes"] = df["Review_Downvotes"].astype(int)
+
+# comments with highest upvotes, 
+#ID and num of upvotes
+
+# sort the DataFrame by number of upvotes
+sorted_df = df.sort_values(by='Review_Downvotes', ascending=False)
+
+# get the first 10 comments with the most upvotes
+top_comments = sorted_df.head(10)
+
+
+
+# print the ID, comment, and number of upvotes for each top comment
+for index, row in top_comments.iterrows():
+    print(f"ID: {row['ID']}\nComment: {row['Review_Text']}\nNumber of Downvotes: {row['Review_Downvotes']}\n")
+
+#downvotes
+#check sorting
+# sort the DataFrame by number of downvotes
+sorted_df2 = df.sort_values(by='Review_Downvotes', ascending=False)
+print(sorted_df2.head())
+
+
+#downvote
+#word cloud of down comments
+
+
+
+
+
+# sort dataframe by upvotes in descending order
+df_sorted = df.sort_values(by=['downvotes'], ascending=False)
+
+# get the comments with non-zero upvotes
+upvoted_comments = df_sorted[df_sorted['downvotes'] > 0]['clean_review_text']
+
+# combine all upvoted comments into a single string
+text = ' '.join(upvoted_comments)
+
+wordcloud = WordCloud(width=800, height=800, background_color='white',
+                          color_func=lambda *args, **kwargs: colors[np.random.randint(0, len(colors))],).generate(text)
+
+# Set the title of the word cloud
+title = 'Word Cloud of Downvoted Reviews'
+
+# Create a figure and axis for the plot
+fig, ax = plt.subplots()
+
+# Add the word cloud to the axis
+ax.imshow(wordcloud, interpolation='bilinear')
+ax.set_title(title)
+
+# Turn off the axis ticks and labels
+ax.axis('off')
+
+# Show the plot
+plt.show()
+
+
+
+
+
+
+
+
+# BIGRAMS of all cleaned comments
+
+# Concatenate all cleaned review texts into a single string
+all_clean_reviews = ' '.join(df['clean_review_text'].tolist())
+
+# Call get_bigrams to get the Counter object of bigrams
+bigram_counter = get_bigrams(all_clean_reviews)
+
+# Get the top bigrams using the most_common method
+top_bigrams = bigram_counter.most_common(15)
+
+# Loop through the top bigrams and print them
+for bigram, count in top_bigrams:
+    print(bigram, count)
+
+    
+    
+
+    
+
+
+#all reviews
+#wordcloud 
+
+# Import necessary libraries
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
+
+# Combine all clean_review_text into a single string
+text = ' '.join(df['clean_review_text'])
+
+# Generate the wordcloud
+wordcloud = WordCloud(width=800, height=800, background_color='white',
+                          color_func=lambda *args, **kwargs: colors[np.random.randint(0, len(colors))],).generate(text)
+
+# Set the title of the word cloud
+title = 'Word Cloud of Cleaned Reviews'
+
+# Create a figure and axis for the plot
+fig, ax = plt.subplots()
+
+# Add the word cloud to the axis
+ax.imshow(wordcloud, interpolation='bilinear')
+ax.set_title(title)
+
+# Turn off the axis ticks and labels
+ax.axis('off')
+
+# Show the plot
+plt.show()
+
+
+# BIGRAMS OF downvotes
+# bigrams for all downvoted comments
+# filter the dataframe to only include rows with non-zero Review_Downvotes values
+filtered_downvotes= df.loc[df['Review_Downvotes'] != 0]
+
+# sort the filtered DataFrame by number of downvotes
+sorted_downvotes = filtered_downvotes.sort_values(by='Review_Downvotes', ascending=False)
+
+# Concatenate the top comments into a single string
+top_comments_downvotes = ' '.join(sorted_downvotes['clean_review_text'].tolist())
+
+# Call get_bigrams to get the Counter object of bigrams
+bigram_downvotes = get_bigrams(top_comments_downvotes)
+
+# Get the top 10 bigrams using the most_common method
+top_bigrams_downvotes = bigram_downvotes.most_common(15)
+
+# Loop through the top bigrams and print them
+for bigram, count in top_bigrams_downvotes:
+    print(bigram, count)
+
+
+# BIGRAMS OF UPVOTED
+    
+# filter the dataframe to only include rows with non-zero Review_Downvotes values
+filtered_upvotes = df.loc[df['Review_Upvotes'] != 0]
+
+# sort the filtered DataFrame by number of votes
+sorted_upvotes = filtered_upvotes.sort_values(by='Review_Upvotes', ascending=False)
+
+# Concatenate the top comments into a single string
+top_comments_upvotes = ' '.join(sorted_upvotes['clean_review_text'].tolist())
+
+# Call get_bigrams to get the Counter object of bigrams
+bigram_upvotes = get_bigrams(top_comments_upvotes)
+
+# Get the top 10 bigrams using the most_common method
+top_bigram_upvotes= bigram_upvotes.most_common(15)
+
+# Loop through the top bigrams and print them
+for bigram, count in top_bigram_upvotes:
+    print(bigram, count)
+
+#Are the top upvoted and top downvoted comments the same?
+
+# Sort the DataFrame by number of upvotes
+sorted_upvotes = df.sort_values(by='Review_Upvotes', ascending=False)
+
+# Get the top 25 upvoted comments
+top_upvoted = sorted_upvotes.head(25)
+
+# Sort the DataFrame by number of downvotes
+sorted_downvotes = df.sort_values(by='Review_Downvotes', ascending=False)
+
+# Get the top 25 downvoted comments
+top_downvoted = sorted_downvotes.head(25)
+
+# Print the IDs, number of upvotes, and number of downvotes for the top upvoted comments
+print('Top 25 upvoted comments:')
+for i, row in top_upvoted.iterrows():
+    print(f"ID: {i}, Upvotes: {row['Review_Upvotes']}, Downvotes: {row['Review_Downvotes']}")
+
+# Print the IDs, number of upvotes, and number of downvotes for the top downvoted comments
+print('Top 25 downvoted comments:')
+for i, row in top_downvoted.iterrows():
+    print(f"ID: {i}, Upvotes: {row['Review_Upvotes']}, Downvotes: {row['Review_Downvotes']}")
+
+
+# PRODUCT #
+
+# Daily Microfoliant
+# Daily Superfoliant
+# Hydro Masque exfoliant
+# Multivitamin Thermafoliant
+
+
+#descriptive statisitcs
+print(df.groupby('Product').describe())
+print(type('Product'))
+#daily MF and daily SF most popular
+
+
+product_counts = df['Product'].value_counts()
+print(product_counts)
+
+
+# Create a bar chart of the number of reviews per product
+ax = product_counts.plot(kind='bar', color=colors)
+ax.set_xlabel('Product')
+plt.xticks(rotation=45)
+ax.set_ylabel('Number of Reviews')
+ax.set_title('Number of Reviews per Product')
+
+# Add labels to each bar
+for i, val in enumerate(product_counts):
+    ax.text(i, val, str(val), horizontalalignment='center')
+
+plt.show()
+
+
+
+
+# distribution of upvotes by product- nonnormalized
+
+# convert Review_Upvotes column to numeric
+df['Review_Upvotes'] = pd.to_numeric(df['Review_Upvotes'])
+
+# bin Review_Upvotes by 5 and plot histogram
+bins = range(0, 84, 1)
+g = sns.FacetGrid(df, col='Product')
+g.map(plt.hist, 'Review_Upvotes', bins=bins, edgecolor='black')
+plt.subplots_adjust(top=0.8)
+g.fig.suptitle('Review Upvotes by Product')
+plt.show()
+
+# dist of votes by product- downvotes
+
+# convert Review_Upvotes column to numeric
+df['Review_Downvotes'] = pd.to_numeric(df['Review_Downvotes'])
+
+# bin Review_Upvotes by 5 and plot histogram
+bins = range(0, 35, 1)
+g = sns.FacetGrid(df, col='Product')
+g.map(plt.hist, 'Review_Downvotes', bins=bins, edgecolor='black')
+plt.subplots_adjust(top=0.8)
+g.fig.suptitle('Review Downvotes by Product')
+plt.show()
+
+sns.boxplot(x='Product', y='Review_Upvotes', data=df)
+plt.title('Review Upvotes by Product')
+plt.xticks(rotation=45)
+plt.show()
+
+
+# WordCloud for each product
+for product, group in df.groupby('Product'):
+    # Combine all reviews into a single string
+    text = ' '.join(group['clean_review_text'])
+    
+    
+    # Generate a WordCloud for the product
+    wordcloud = WordCloud(width=800, height=800, background_color='white', 
+                          color_func=lambda *args, **kwargs: colors[np.random.randint(0, len(colors))],).generate(text)
+
+    # Display the WordCloud
+    plt.figure(figsize=(8, 8), facecolor=None)
+    plt.imshow(wordcloud)
+    plt.axis("off")
+    plt.tight_layout(pad=0)
+    plt.title(product)
+    plt.show()
+
+      
+    
+    #microfoliant: sensitive, texture, powder, gentle
+        # bi/trigrams
+        # help
+        # every day 
+    #superfoliant: dry, smell, smooth, intensive moisture
+    #hydromasque exfoliant: finger, scent/smell, finger rubbed, take minute
+    #MV thermofoliant: feel, smooth, warming sensation/warm 
+    
+    
+
+# top bigrams by product
+
+from collections import Counter
+
+bigrams_by_product = {}
+
+for product in df['Product'].unique():
+    # Filter the DataFrame by product
+    product_df = df[df['Product'] == product]
+    
+    # Get the top 25 comments for this product
+    top_comments_str = ' '.join(product_df.sort_values(by='Review_Upvotes', ascending=False)['clean_review_text'].tolist())
+    
+    # Check that there are at least 25 comments for this product
+    if len(top_comments_str) == 0:
+        continue
+    
+    # Get the bigram counts for this product
+    bigram_counts = get_bigrams(top_comments_str)
+    
+    # Check that there are at least 10 unique bigrams for this product
+    if len(bigram_counts) < 10:
+        continue
+    
+    # Get the top 10 bigrams for this product
+    top_bigrams = Counter(bigram_counts).most_common(25)
+    
+    # Store the top bigrams for this product in a dictionary
+    bigrams_by_product[product] = top_bigrams
+
+# Print the top bigrams for each product
+for product, top_bigrams in bigrams_by_product.items():
+    print(f"\n{product}:")
+    for bigram, count in top_bigrams:
+        print(f"{bigram}: {count}")
+
+
+# review title #
+# hist 
+# Split the review titles into words and get the length
+title_word_length = [len(title.split()) for title in df['Review_Title']]
+
+# Count the frequency of each length of review title
+title_word_length_counts = pd.Series(title_word_length).value_counts()
+
+# Plot the bar chart
+plt.bar(title_word_length_counts.index, title_word_length_counts.values)
+plt.xlabel('Length of Review Title (in words)')
+plt.ylabel('Frequency')
+plt.title('Histogram of Length of Review Title')
+for i, v in enumerate(title_word_length_counts.values):
+    plt.text(title_word_length_counts.index[i], v, str(v), ha='center')
+plt.show()
+
+
+# review_title #
+# sentiment analysis for review_title
+#polarity
+
+
+from textblob import TextBlob
+# doesnt need preprocessing 
+
+
+# Loop through each review title and get the sentiment score
+sentiment_scores = []
+for title in df['Review_Title']:
+    # Create a TextBlob object and get the sentiment score
+    blob = TextBlob(title)
+    sentiment_score = blob.sentiment.polarity
+    
+    # Append the sentiment score to the list
+    sentiment_scores.append(sentiment_score)
+
+# Add the sentiment scores to the dataframe as a new column
+df['title_sentiment_score'] = sentiment_scores
+
+# descriptive statistics on the sentiment scores
+print(df['title_sentiment_score'].describe())
+
+top10 = df[['Review_Title', 'title_sentiment_score']].sort_values(by='title_sentiment_score', ascending=False).head(10)
+bot10 = df[['Review_Title', 'title_sentiment_score']].sort_values(by='title_sentiment_score', ascending=True).head(10)
+
+# randomly select 20 rows from your DataFrame
+sample_df = df.sample(n=20)
+
+
+# print the resulting DataFrame
+print(sample_df[['Review_Title', 'title_sentiment_score']])
+print(top10)
+print(bot10)
+
+
+
+
+# avg score
+avg_sentiment_score = df['title_sentiment_score'].mean()
+print('\nAverage sentiment score:', avg_sentiment_score)
+
+# avg score by product
+avg_sentiment_by_product = df.groupby('Product')['title_sentiment_score'].agg('mean')
+print('Average sentiment score by product:')
+print(avg_sentiment_by_product)
+
+
+# review_title #
+# sentiment analysis for review_title
+# subjectivity
+
+# doesnt need preprocessing 
+
+
+# Loop through each review title and get the sentiment score
+sub_scores = []
+for title in df['Review_Title']:
+    # Create a TextBlob object and get the sentiment score
+    blob = TextBlob(title)
+    sentiment_score = blob.subjectivity
+    
+    # Append the sentiment score to the list
+    sub_scores.append(sentiment_score)
+
+# Add the sentiment scores to the dataframe as a new column
+df['title_sub_score'] = sub_scores
+
+# descriptive statistics on the sentiment scores
+print(df['title_sub_score'].describe())
+
+top10 = df[['Review_Title', 'title_sub_score']].sort_values(by='title_sub_score', ascending=False).head(10)
+bot10 = df[['Review_Title', 'title_sub_score']].sort_values(by='title_sub_score', ascending=True).head(10)
+
+# randomly select 20 rows from your DataFrame
+sample_df = df.sample(n=20)
+
+
+# print the resulting DataFrame
+print(sample_df[['Review_Title', 'title_sub_score']])
+print(top10)
+print(bot10)
+
+
+
+
+# avg score
+avg_sentiment_score = df['title_sub_score'].mean()
+print('\nAverage subjectivty score:', avg_sentiment_score)
+
+# avg score by product
+avg_sentiment_by_product = df.groupby('Product')['title_sub_score'].agg('mean')
+print('Average subjectivity score by product:')
+print(avg_sentiment_by_product)
+
+
+# visualizations
+
+# Bar chart of sentiment analysis scores
+plt.figure(figsize=(8,6))
+plt.hist(df['title_sub_score'], edgecolor='black')
+plt.title('Distribution of Subjectivity Scores, TextBlob: Review  Title')
+plt.xlabel('Subjectivity Score')
+plt.ylabel('Frequency')
+plt.show()
+
+# Barplot of sentiment analysis scores by product
+plt.figure(figsize=(8,6))
+sns.histplot(data=df, x='title_sub_score', hue='Product', multiple='stack', kde=True, edgecolor='black')
+plt.title('Subjectivity Scores by Product, TextBlob: Review Title')
+plt.xlabel('Subjectivity Score')
+plt.ylabel('Count')
+plt.show()
+
+# four subplots
+#fig, axs = plt.subplots(1, 4, figsize=(20, 5))
+# Create a FacetGrid with histograms of sentiment analysis scores for each product
+g = sns.FacetGrid(df, col='Product', col_wrap=4, height=4)
+g.map(sns.histplot, 'title_sub_score', kde=False, color='skyblue')
+plt.show()
+
+
+# Boxplot of sentiment analysis scores by product
+plt.figure(figsize=(8,6))
+df.boxplot(column='title_sub_score', by='Product', vert=False)
+plt.xlabel('Subjectivity Score, TextBlob')
+plt.ylabel('Product')
+plt.show()
+
+
+
+# Pivot the data to get the sentiment scores by product and review title
+sentiment_pivot = df.pivot_table(index='Product', columns='Review_Title', values='title_sub_score', aggfunc='mean')
+
+
+# Count the number of occurrences of each score for each product
+counts = df.groupby(['Product', 'title_sub_score']).size().reset_index(name='count')
+
+# Calculate the percentage of each score for each product
+counts['percent'] = counts.groupby('Product')['count'].apply(lambda x: 100*x/x.sum())
+
+# Create the barplot with normalized data
+plt.figure(figsize=(8,6))
+sns.histplot(data=counts, x='title_sub_score', hue='Product', multiple='stack', kde=True, edgecolor='black', weights='percent')
+plt.title('Subjectivity Scores by Product, TextBlob: Review Title')
+plt.xlabel('Subjectivity Score')
+plt.ylabel('Percentage')
+plt.show()
+
+
+# review title 
+# version 2 with clean text
+
+# Clean review text
+df['clean_title'] = df['Review_Title'].apply(clean_text)
+# Loop through each review title and get the sentiment score
+
+sentiment_scores = []
+for title in df['clean_title']:
+    # Create a TextBlob object and get the sentiment score
+    blob = TextBlob(title)
+    sentiment_score = blob.sentiment.polarity
+    
+    # Append the sentiment score to the list
+    sentiment_scores.append(sentiment_score)
+
+# Add the sentiment scores to the dataframe as a new column
+df['title_sentiment_score'] = sentiment_scores
+
+
+# descriptive statistics on the sentiment scores
+print(df['title_sentiment_score'].describe())
+
+top10 = df[['Review_Title', 'title_sentiment_score']].sort_values(by='title_sentiment_score', ascending=False).head(10)
+
+print(top10)
+
+# avg score
+avg_sentiment_score = df['title_sentiment_score'].mean()
+print('\nAverage sentiment score:', avg_sentiment_score)
+
+# avg score by product
+avg_sentiment_by_product = df.groupby('Product')['title_sentiment_score'].agg('mean')
+print('Average sentiment score by product:')
+print(avg_sentiment_by_product)
+
+
+
+# performs better without text cleaning
+
+
+
+
+
+# review title visualizations
+#polarity
+# Loop through each review title and get the sentiment score
+sentiment_scores = []
+for title in df['Review_Text']:
+    # Create a TextBlob object and get the sentiment score
+    blob = TextBlob(title)
+    sentiment_score = blob.sentiment.polarity
+    
+    # Append the sentiment score to the list
+    sentiment_scores.append(sentiment_score)
+
+# Add the sentiment scores to the dataframe as a new column
+df['title_sentiment_score'] = sentiment_scores
+
+
+# descriptive statistics on the sentiment scores
+print(df['title_sentiment_score'].describe())
+
+
+# Bar chart of sentiment analysis scores
+plt.figure(figsize=(8,6))
+plt.hist(df['title_sentiment_score'], edgecolor='black')
+plt.title('Distribution of Polarity Scores, TextBlob: Review  Text')
+plt.xlabel('Polarity Score')
+plt.ylabel('Frequency')
+plt.show()
+
+# Barplot of sentiment analysis scores by product
+plt.figure(figsize=(8,6))
+sns.histplot(data=df, x='title_sentiment_score', hue='Product', multiple='stack', kde=True, edgecolor='black')
+plt.title('Polarity Scores by Product, TextBlob: Review Text')
+plt.xlabel('Polarity Score')
+plt.ylabel('Count')
+plt.show()
+
+# Create four subplots
+#fig, axs = plt.subplots(1, 4, figsize=(20, 5))
+# Create a FacetGrid with histograms of sentiment analysis scores for each product
+g = sns.FacetGrid(df, col='Product', col_wrap=4, height=4)
+g.map(sns.histplot, 'title_sentiment_score', kde=False, color='skyblue')
+plt.show()
+
+
+# Boxplot of sentiment analysis scores by product
+plt.figure(figsize=(8,6))
+df.boxplot(column='title_sentiment_score', by='Product', vert=False)
+plt.xlabel('Polarity Score, TextBlob')
+plt.ylabel('Product')
+plt.show()
+
+
+
+# Pivot the data to get the sentiment scores by product and review title
+sentiment_pivot = df.pivot_table(index='Product', columns='Review_Text', values='title_sentiment_score', aggfunc='mean')
+
+# Create a heatmap of the sentiment scores
+sns.heatmap(sentiment_pivot, cmap='coolwarm', center=0)
+
+
+
+
+
+# review_text #
+# sentiment analysis for review_title
+# subjectivity
+
+# doesnt need preprocessing 
+
+
+# Loop through each review title and get the sentiment score
+sub_scores = []
+for title in df['Review_Text']:
+    # Create a TextBlob object and get the sentiment score
+    blob = TextBlob(title)
+    sentiment_score = blob.subjectivity
+    
+    # Append the sentiment score to the list
+    sub_scores.append(sentiment_score)
+
+# Add the sentiment scores to the dataframe as a new column
+df['title_sub_score'] = sub_scores
+
+# descriptive statistics on the sentiment scores
+print(df['title_sub_score'].describe())
+
+top10 = df[['Review_Text', 'title_sub_score']].sort_values(by='title_sub_score', ascending=False).head(10)
+bot10 = df[['Review_Text', 'title_sub_score']].sort_values(by='title_sub_score', ascending=True).head(10)
+
+# randomly select 20 rows from your DataFrame
+sample_df = df.sample(n=20)
+
+
+# print the resulting DataFrame
+print(sample_df[['Review_Text', 'title_sub_score']])
+print(top10)
+print(bot10)
+
+
+
+
+# avg score
+avg_sentiment_score = df['title_sub_score'].mean()
+print('\nAverage subjectivty score:', avg_sentiment_score)
+
+# avg score by product
+avg_sentiment_by_product = df.groupby('Product')['title_sub_score'].agg('mean')
+print('Average subjectivity score by product:')
+print(avg_sentiment_by_product)
+
+
+# visualizations
+
+# Bar chart of sentiment analysis scores
+plt.figure(figsize=(8,6))
+plt.hist(df['title_sub_score'], edgecolor='black')
+plt.title('Distribution of Subjectivity Scores, TextBlob: Review  Text')
+plt.xlabel('Subjectivity Score')
+plt.ylabel('Frequency')
+plt.show()
+
+# Barplot of sentiment analysis scores by product
+plt.figure(figsize=(8,6))
+sns.histplot(data=df, x='title_sub_score', hue='Product', multiple='stack', kde=True, edgecolor='black')
+plt.title('Subjectivity Scores by Product, TextBlob: Review Text')
+plt.xlabel('Subjectivity Score')
+plt.ylabel('Count')
+plt.show()
+
+# four subplots
+#fig, axs = plt.subplots(1, 4, figsize=(20, 5))
+# Create a FacetGrid with histograms of sentiment analysis scores for each product
+g = sns.FacetGrid(df, col='Product', col_wrap=4, height=4)
+g.map(sns.histplot, 'title_sub_score', kde=False, color='skyblue')
+plt.show()
+
+
+# Boxplot of sentiment analysis scores by product
+plt.figure(figsize=(8,6))
+df.boxplot(column='title_sub_score', by='Product', vert=False)
+plt.xlabel('Subjectivity Score, TextBlob')
+plt.ylabel('Product')
+plt.show()
+
+
+
+# Pivot the data to get the sentiment scores by product and review title
+sentiment_pivot = df.pivot_table(index='Product', columns='Review_Text', values='title_sub_score', aggfunc='mean')
+
+
+# descriptives of wordblob 
+
+text_sentiment_scores = df['text_sentiment_score']
+print("Descriptive Statistics for Sentiment Analysis Scores (Overall):")
+print("Mean: {:.2f}".format(text_sentiment_scores.mean()))
+print("Median: {:.2f}".format(text_sentiment_scores.median()))
+print("Standard Deviation: {:.2f}".format(text_sentiment_scores.std()))
+print("Minimum Score: {:.2f}".format(text_sentiment_scores.min()))
+print("Maximum Score: {:.2f}".format(text_sentiment_scores.max()))
+
+
+
+avg_sentiment_by_product = df.groupby('Product')['text_sentiment_score'].agg(['mean', 'median', 'std', 'min', 'max'])
+print("Descriptive Statistics for Sentiment Analysis Scores by Product:")
+print(avg_sentiment_by_product)
+
+# tf-idf
+
+# Tokenize the text and remove stop words
+stop_words = set(stopwords.words('english'))
+df['tokens'] = df['Review_Text'].apply(lambda x: [word.lower() for word in nltk.word_tokenize(x) if word.lower() not in stop_words])
+
+# Define TF-IDF functions
+def tf(term, tokens):
+    return tokens.count(term) / len(tokens)
+
+def idf(term, documents):
+    n = len(documents)
+    df = sum(1 for document in documents if term in document)
+    if df == 0:
+        return 0
+    else:
+        return math.log10(n/df)
+
+# Calculate TF-IDF for each token in the corpus
+corpus = df['tokens'].tolist()
+tfidf_scores = []
+for tokens in corpus:
+    tfidf_dict = {}
+    for term in tokens:
+        tfidf_dict[term] = tf(term, tokens) * idf(term, corpus)
+    tfidf_scores.append(tfidf_dict)
+
+# Get top 10 keywords for each document
+df['top_keywords'] = pd.Series(tfidf_scores).apply(lambda x: [k for k, v in sorted(x.items(), key=lambda item: item[1], reverse=True)[:10]])
+
+
+#TF IDF
+# function to calculate the term frequency of a term in a document
+# how many times it appears
+def tf(term, document):
+    return document.count(term) / len(document)
+
+# function to calculate the inverse document frequency of a term
+def idf(term, documents):
+    n = len(documents)
+    df = sum(1 for document in documents if term in document)
+    if df == 0:
+        return 0.0
+    else:
+        return math.log10(n/(df+1))
+
+
+# function to clean and tokenize the text using regex
+def clean_tokenize(text):
+    text = text.lower()
+    text = re.sub(r'[^\w\s]', '', text) # remove punctuation
+    tokens = re.split('\W+', text) # tokenize
+    return tokens
+
+# calculate the tf-idf scores for each term in each document
+documents = df['Review_Text'].tolist()
+tfidf_scores = []
+for document in documents:
+    tokens = clean_tokenize(document)
+    tfidf_dict = {}
+    for term in tokens:
+        tfidf_dict[term] = tf(term, tokens) * idf(term, documents)
+    tfidf_scores.append(tfidf_dict)
+
+
+# TAGGING
+# using cleaned text
+#nltk.download('averaged_perceptron_tagger')
+
+
+tokens = nltk.word_tokenize(cleaned_text_string)
+tags = nltk.pos_tag(tokens)
+print('tagged words:\n',tags[:50]) # 82,000 words
+
+
+# function to tag words
+def tag_text(clean_review_text):
+    tokens = nltk.word_tokenize(clean_review_text)
+    tags = nltk.pos_tag(tokens)
+    return tags
+
+
+# create tagged_text
+df['tagged_text'] = df['clean_review_text'].apply(tag_text)
+
+print(df['tagged_text'].head())
+
+print(df['clean_review_text'].head()) # for comparison to check it worked
+
+# Print the tags
+print(tags)
+
+# frequency of adjectives
+
+# define regular expression pattern to match adjectives
+pattern = 'JJ'
+
+# extract all adjectives using regular expression matching
+adjectives = [word for word, tag in tags if re.match(pattern, tag)]
+# count frequency of each adjective
+freq_dist = Counter(adjectives)
+
+# extract top 15 st frequent adjectives and their counts
+top_15 = freq_dist.most_common(15)
+top_15_adjectives = [adj for adj, count in top_15]
+top_15_counts = [count for adj, count in top_15]
+
+# create bar plot of top 10 adjectives
+plt.bar(top_15_adjectives, top_15_counts)
+plt.xticks(rotation=90)
+plt.xlabel('Adjectives')
+plt.ylabel('Frequency')
+plt.title('Top 25 Adjectives in Review Text')
+plt.show()
+
+
+# top adjectives by product
+
+
+# create a dictionary to store adjectives for each product
+product_adjectives = {}
+
+# iterate over each row in the dataframe
+for index, row in df.iterrows():
+           
+    # get the product name and review text
+    product = row['Product']
+    review_text = row['clean_review_text']
+    
+    # use NLTK to tag the parts of speech in the review text
+    tokens = nltk.word_tokenize(review_text)
+    tags = nltk.pos_tag(tokens)
+    
+    # create a list of adjectives in the review text
+    adjectives = [word for word, tag in tags if re.search(r'^JJ', tag)]
+    
+    # if the product is not already in the dictionary, add it
+    if product not in product_adjectives:
+        product_adjectives[product] = []
+        
+    # add the adjectives to the product's list of adjectives
+    product_adjectives[product].extend(adjectives)
+    
+# create a dictionary to store the top 10 adjectives for each product
+top_adjectives_by_product = {}
+
+# iterate over the product_adjectives dictionary
+for product, adjectives in product_adjectives.items():
+    # count the frequency of each adjective and sort by frequency
+    adjective_counts = pd.Series(adjectives).value_counts().sort_values(ascending=False)
+    
+    # get the top x adjectives and store them in the top_adjectives_by_product dictionary
+    top_adjectives = adjective_counts.head(25)
+    top_adjectives_by_product[product] = top_adjectives
+    
+    # plot the top 10 adjectives for the product
+    plt.figure(figsize=(10,5))
+    plt.bar(top_adjectives.index, top_adjectives.values)
+    plt.title(f'Top 25 Adjectives for {product}')
+    plt.xlabel('Adjective')
+    plt.ylabel('Frequency')
+    plt.xticks(rotation=90)
+    plt.show()
+
+
+# top nouns by product
+
+# create a dictionary to store nouns for each product
+product_nouns = {}
+
+# iterate over each row in the dataframe
+for index, row in df.iterrows():
+           
+    # get the product name and review text
+    product = row['Product']
+    review_text = row['clean_review_text']
+    
+    # use NLTK to tag the parts of speech in the review text
+    tokens = nltk.word_tokenize(review_text)
+    tags = nltk.pos_tag(tokens)
+    
+    # create a list of nouns in the review text
+    nouns = [word for word, tag in tags if re.search(r'^NN', tag)]
+    
+    # if the product is not already in the dictionary, add it
+    if product not in product_nouns:
+        product_nouns[product] = []
+        
+    # add the nouns to the product's list of nouns
+    product_nouns[product].extend(nouns)
+    
+# create a dictionary to store the top 10 nouns for each product
+top_nouns_by_product = {}
+
+# iterate over the product_nouns dictionary
+for product, nouns in product_nouns.items():
+    # count the frequency of each noun and sort by frequency
+    noun_counts = pd.Series(nouns).value_counts().sort_values(ascending=False)
+    
+    # get the top x nouns and store them in the top_nouns_by_product dictionary
+    top_nouns = noun_counts.head(25)
+    top_nouns_by_product[product] = top_nouns
+    
+    # plot the top 10 nouns for the product
+    plt.figure(figsize=(10,5))
+    plt.bar(top_nouns.index, top_nouns.values)
+    plt.title(f'Top 25 Nouns for {product}')
+    plt.xlabel('Noun')
+    plt.ylabel('Frequency')
+    plt.xticks(rotation=90)
+    plt.show()
+
+
+# VADER
+#!pip install vaderSentiment
+#from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+#import random
+
+# select a random sample of 5 reviews
+sample_reviews = df["Review_Text"].sample(n=5)
+
+# create the sentiment analyzer
+analyzer = SentimentIntensityAnalyzer()
+
+# analyze the sentiment of each review in the sample
+for review in sample_reviews:
+    vs = analyzer.polarity_scores(review)
+    print("Review: {}\nSentiment: {}\n".format(review, str(vs)))
+
+    
+# Get the sentiment scores for each review
+df['sentiment_scores'] = df['Review_Text'].apply(lambda x: analyzer.polarity_scores(x))
+
+# Extract the compound score from the sentiment scores and add it to a new column
+df['compound_score'] = df['sentiment_scores'].apply(lambda x: x['compound'])
+
+# Create a scatter plot of the compound scores
+plt.scatter(df.index, df['compound_score'])
+
+# Set the x-axis label and title
+plt.xlabel('Review Number')
+plt.title('Sentiment Scores: Vader')
+
+# Show the plot
+plt.show()
+
+# Get the VADER compound scores
+vader_scores = df['compound_score']
+
+# Calculate descriptive statistics
+mean = vader_scores.mean()
+median = vader_scores.median()
+std_dev = vader_scores.std()
+min_score = vader_scores.min()
+max_score = vader_scores.max()
+
+# Print the results
+print("Descriptive Statistics for VADER Scores:")
+print("Mean: {:.2f}".format(mean))
+print("Median: {:.2f}".format(median))
+print("Standard Deviation: {:.2f}".format(std_dev))
+print("Minimum Score: {:.2f}".format(min_score))
+print("Maximum Score: {:.2f}".format(max_score))
+
+
+
+# get the compound score for each review
+df['compound_score'] = df['Review_Text'].apply(lambda x: analyzer.polarity_scores(x)['compound'])
+
+# calculate the average score for each product
+product_scores = df.groupby('Product')['compound_score'].mean()
+
+# plot the scores for each product
+plt.bar(product_scores.index, product_scores.values)
+
+# set the x-axis label and title
+plt.xlabel('Product')
+plt.ylabel('Compound Sentiment Score')
+plt.title('Compound Sentiment Scores: Vader')
+
+# rotate the x-axis labels for better readability
+plt.xticks(rotation=90)
+
+# show the plot
+plt.show()
+
+
+
+# Group the dataframe by product
+grouped_df = df.groupby('Product')
+
+# Loop through each product group and calculate the descriptive statistics for VADER scores
+for product, group in grouped_df:
+    vader_scores = group['compound_score']
+    mean = vader_scores.mean()
+    median = vader_scores.median()
+    std_dev = vader_scores.std()
+    min_score = vader_scores.min()
+    max_score = vader_scores.max()
+    print("Descriptive Statistics for VADER Scores - {}: ".format(product))
+    print("Mean: {:.2f}".format(mean))
+    print("Median: {:.2f}".format(median))
+    print("Standard Deviation: {:.2f}".format(std_dev))
+    print("Minimum Score: {:.2f}".format(min_score))
+    print("Maximum Score: {:.2f}\n".format(max_score))
+
+
+# with raw text
+
+
+# initialize VADER sentiment analyzer
+analyzer = SentimentIntensityAnalyzer()
+
+# define function to extract sentiment scores for each review in ReviewText
+def get_sentiment_scores(review_text):
+    scores = []
+    for text in review_text:
+        tokens = word_tokenize(text)
+        sentence_text = ' '.join([word for word in tokens])
+        sentiment = analyzer.polarity_scores(sentence_text)
+        scores.append(sentiment)
+    return scores
+
+# extract sentiment scores for each review in ReviewText
+sentiment_scores = get_sentiment_scores(df['Review_Text'])
+
+# print average sentiment score for each sentiment category
+avg_sentiment = {}
+for category in ['neg', 'neu', 'pos', 'compound']:
+    scores = [score[category] for score in sentiment_scores]
+    avg_score = sum(scores) / len(scores)
+    avg_sentiment[category] = avg_score
+print(avg_sentiment)
+print(sentiment_scores[:5])
+
+df['sentiment_scores'] = sentiment_scores
+
+
+# extract compound scores from sentiment scores
+compound_scores = [score['compound'] for score in sentiment_scores]
+
+# plot histogram of compound scores
+plt.hist(compound_scores)
+plt.title('Distribution of Sentiment Scores: Vader')
+plt.xlabel('Compound Score')
+plt.ylabel('Frequency')
+plt.show()
+
+
+
+print(type(sentiment_scores))
+import matplotlib.pyplot as plt
+
+# it is a list of dictionaries
+# need to convert 
+
+#normalized weighted composite score of the positive, negative, and neutral sentiment scores.
+
+# extract sentiment scores for each review in tagged text
+sentiment_scores = get_sentiment_scores(df['tagged_text'])
+
+# extract compound scores from sentiment scores
+compound_scores = [score['compound'] for score in sentiment_scores]
+
+# plot histogram of compound scores
+plt.hist(compound_scores)
+plt.title('Distribution of Sentiment Scores: Vader')
+plt.xlabel('Compound Score')
+plt.ylabel('Frequency')
+plt.show()
+
+
+
+
+# create DataFrame with columns 'Product' and 'Compound Score'
+product_sentiment_scores = pd.DataFrame({'Product': df['Product'], 'Compound Score': compound_scores})
+
+# group by product and calculate the mean compound score for each group
+product_mean_scores = product_sentiment_scores.groupby('Product')['Compound Score'].mean()
+
+# sort the DataFrame by mean compound score in descending order
+product_mean_scores = product_mean_scores.sort_values(ascending=False)
+
+# plot bar chart of mean compound scores by product
+product_mean_scores.plot(kind='bar')
+plt.title('Mean Sentiment Scores by Product: Vader')
+plt.xlabel('Product')
+plt.ylabel('Mean Compound Score')
+plt.show()
+
+
+# sentiment analysis with tagged text
+# compare to VADER
+
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+
+# apply function to dataframe
+df['tagged_text'] = df['clean_review_text'].apply(tag_text)
+
+# initialize VADER sentiment analyzer
+analyzer = SentimentIntensityAnalyzer()
+
+# define function to extract sentiment scores for each sentence in tagged text
+def get_sentiment_scores(tagged_text):
+    scores = []
+    for sentence in tagged_text:
+        sentence_text = ' '.join([word for word, tag in sentence])
+        sentiment = analyzer.polarity_scores(sentence_text)
+        scores.append(sentiment)
+    return scores
+
+# initialize lists to store sentiment scores and product names
+neg_scores = []
+neu_scores = []
+pos_scores = []
+compound_scores = []
+products = []
+
+# split reviews by product
+for product in df['Product'].unique():
+    product_df = df[df['Product'] == product]
+    tagged_text = product_df['tagged_text'].tolist()
+
+    # extract sentiment scores for each sentence in tagged text
+    sentiment_scores = get_sentiment_scores(tagged_text)
+
+    # calculate average sentiment score for each sentiment category
+    avg_sentiment = {}
+    for category in ['neg', 'neu', 'pos', 'compound']:
+        scores = [score[category] for score in sentiment_scores]
+        avg_score = sum(scores) / len(scores)
+        avg_sentiment[category] = avg_score
+    
+    # store sentiment scores and product name
+    neg_scores.append(avg_sentiment['neg'])
+    neu_scores.append(avg_sentiment['neu'])
+    pos_scores.append(avg_sentiment['pos'])
+    compound_scores.append(avg_sentiment['compound'])
+    products.append(product)
+
+# plot bar chart
+x = np.arange(len(products))
+width = 0.2
+fig, ax = plt.subplots()
+rects1 = ax.bar(x - width, neg_scores, width, label='Negative')
+rects2 = ax.bar(x, neu_scores, width, label='Neutral')
+rects3 = ax.bar(x + width, pos_scores, width, label='Positive')
+rects4 = ax.bar(x + 2*width, compound_scores, width, label='Compound')
+
+# add some text for labels, title and axes ticks
+ax.set_ylabel('Sentiment Score')
+ax.set_title('Sentiment Scores by Product: Vader')
+plt.xticks(rotation=45)
+ax.set_xticks(x + width / 2)
+ax.set_xticklabels(products)
+ax.legend()
+
+fig.tight_layout()
+
+plt.show()
+
+
+#up to this point it all works
+
+# REVIEW DATE #
+# Create histogram of reviews by Review_Date
+plt.hist(df['Review_Date'])
+
+# Rotate x-axis labels
+plt.xticks(rotation=45)
+
+# Show plot
+plt.show()
+
+# review date
+
+# Explore the Review_location column
+print(df['Review_Date'].value_counts()) # most are not verified
+
+
+# Count number of verified and non-verified buyers
+buyer_counts = df['Review_Date'].value_counts()
+
+
+# Create pie chart
+plt.pie(buyer_counts, labels=buyer_counts.index, autopct='%1.1f%%')
+
+# Set title
+plt.title('Pie Chart of Review Date')
+# Show plot
+plt.show()
+
+# need to relabel for better graph
+def relabel_time_period(time_str):
+    # match for "X day(s) ago"
+    days_match = re.search(r'(\d+)\s+day(?:s)?\s+ago', time_str)
+    if days_match:
+        days = int(days_match.group(1))
+        if days < 365:
+            return "< one year ago"
+
+    # match for "X month(s) ago"
+    months_match = re.search(r'(\d+)\s+month(?:s)?\s+ago', time_str)
+    if months_match:
+        months = int(months_match.group(1))
+        if months < 12:
+            return "< one year ago"
+    
+    return time_str  # return the original string if not matching above
+
+df['Relabeled_Date'] = df['Review_Date'].apply(relabel_time_period)
+
+print(df['Relabeled_Date'].head(10))
+#check it worked
+
+
+
+# Create histogram of reviews by Review_Date
+plt.hist(df['Relabeled_Date'])
+
+# Rotate x-axis labels
+plt.xticks(rotation=45)
+
+# Set the x and y axis labels
+plt.title('Number of Reviews by Year')
+plt.xlabel('Years Since Review')
+plt.ylabel('Number of Reviews')
+
+
+# Show plot
+plt.show()
+
+# Show plot
+plt.show()
+
+#uniq = df['Review_Date'].nunique()
+#print(uniq) 
+#41 unique values
+
+# each unique value and the counts
+counts = df['Review_Date'].value_counts()
+print(counts)
+
+
+# histogram of reviews < one year old
+# Filter rows with strings "months ago" or "days ago", not years ago
+filtered_df = df[df['Review_Date'].str.contains('months ago|days ago| month ago| day ago')]
+
+# Create a new column for time period
+filtered_df['Time_Period'] = ''
+
+# Update the time period column based on the number of days ago
+filtered_df.loc[filtered_df['Review_Date'].str.contains('days ago'), 'Time_Period'] = '<1 month ago'
+filtered_df.loc[filtered_df['Review_Date'].str.contains('month ago'), 'Time_Period'] = ' 1 month ago'
+filtered_df.loc[filtered_df['Review_Date'].str.contains('2 months ago'), 'Time_Period'] = '2 months ago'
+filtered_df.loc[filtered_df['Review_Date'].str.contains('3 months ago'), 'Time_Period'] = '3 months ago'
+filtered_df.loc[filtered_df['Review_Date'].str.contains('4 months ago'), 'Time_Period'] = '4 months ago'
+filtered_df.loc[filtered_df['Review_Date'].str.contains('5 months ago'), 'Time_Period'] = '5 months ago'
+filtered_df.loc[filtered_df['Review_Date'].str.contains('6 months ago'), 'Time_Period'] = '6 months ago'
+filtered_df.loc[filtered_df['Review_Date'].str.contains('7 months ago'), 'Time_Period'] = '7 months ago'
+filtered_df.loc[filtered_df['Review_Date'].str.contains('8 months ago'), 'Time_Period'] = '8 months ago'
+filtered_df.loc[filtered_df['Review_Date'].str.contains('9 months ago'), 'Time_Period'] = '9 months ago'
+filtered_df.loc[filtered_df['Review_Date'].str.contains('10 months ago'), 'Time_Period'] = '10 months ago'
+filtered_df.loc[filtered_df['Review_Date'].str.contains('11 months ago'), 'Time_Period'] = '11 months ago'
+
+# Create histogram of filtered data
+plt.hist(filtered_df['Time_Period'])
+
+# Set the x and y axis labels
+plt.title('Number of Comments Over the Past Year')
+plt.xlabel('Time Period')
+plt.ylabel('Number of Comments')
+plt.xticks( rotation=45)
+# Show plot
+plt.show()
+
+
+
+# reviews over the past year in days
+# method 2
+
+# Define function to extract time period in days from Review_Date
+def extract_time_period(date_str):
+    # Extract number and time period using regex
+    pattern = r'(\d*)\s*(day|month|year)s?\s+ago'
+    match = re.search(pattern, date_str)
+    if match:
+        # Convert time period to days
+        num = int(match.group(1))
+        unit = match.group(2)
+        if unit == 'day':
+            return num
+        elif unit == 'month':
+            return num * 30
+        elif unit == 'year':
+            return num * 365
+    else:
+        return None
+
+# Apply function to Review_Date column to create new 'days_since_review' column
+df['days_since_review'] = df['Review_Date'].apply(lambda x: extract_time_period(x))
+
+
+#print(df['days_since_review'].head(50))
+
+
+# Filter the rows based on the time period
+filtered_df = df[df['days_since_review'] <= 364]
+
+
+# Plot the histogram
+plt.hist(filtered_df['days_since_review'])
+
+# Set the x and y axis labels
+plt.title('Number of Reviews Over the Past Year ')
+plt.xlabel('Days Since Review')
+plt.ylabel('Number of Reviews')
+
+# Show the plot
+plt.show()
+
+
+# number of comments over the past year
+
+
+
+# define the desired sort order
+sort_order = ['< one year ago', '1 year ago', '2 years ago', '3 years ago', '4 years ago', '5 years ago', '6 years ago', '7 years ago', '8 years ago', '9 years ago', '10 years ago', '11 years ago']
+
+# define a function that maps each value to its sort order index
+def get_sort_key(value):
+    if value not in sort_order:
+        return len(sort_order)  # return a value greater than the maximum sort order index
+    return sort_order.index(value)
+
+# apply the sort key function to the values in the x-axis column and sort the DataFrame
+sorted_df = pivoted_df.iloc[:,::-1].sort_values(by='Relabeled_Date', key=lambda x: x.map(get_sort_key))
+
+# plot the sorted DataFrame
+sorted_df.plot(kind='bar', alpha=0.5)
+
+# rotate x-axis labels
+plt.xticks(rotation=45)
+
+# set the x and y axis labels
+plt.title('Number of Reviews Each Year by Product ')
+plt.xlabel('Review Date')
+plt.ylabel('Number of Reviews')
+
+# show plot
+plt.show()
+
+
+
+# show plot
+plt.show()
+
+
+# Create a new column with days since review
+df['days_since_review'] = df['Review_Date'].apply(lambda x: extract_time_period(x))
+
+# Group by days since review and count the number of comments
+grouped_df = df.groupby('days_since_review')['Review_Text'].count().reset_index(name='counts')
+
+# Sort the dataframe by days since review
+grouped_df = grouped_df.sort_values(by='days_since_review')
+
+# Pivot the data to create a wide-form dataframe with each product as a column
+pivoted_df = grouped_df.pivot(index='days_since_review', columns=df['Product'], values='counts')
+
+# Create histogram of reviews by days since review for each product
+pivoted_df.plot(kind='bar', alpha=0.5)
+
+# Rotate x-axis labels
+plt.xticks(rotation=45)
+
+# Set the x and y axis labels
+plt.xlabel('Days Since Review')
+plt.ylabel('Number of Comments')
+
+# Show plot
+plt.show()
+
+
+# days since review by product
+
+# Group by 'Product' column and iterate over each group
+for product, group in filtered_df.groupby('Product'):
+    # Create a histogram for the 'days_since_review' column
+    plt.hist(group['days_since_review'])
+    
+    # Set the title and axis labels
+    plt.title(f'Days Since Review for {product}')
+    plt.xlabel('Days Since Review')
+    plt.ylabel('Number of Reviews')
+    
+    # Show the plot
+    plt.show()
+    
+ 
+
+# review location  #
+# messy, 1423 diff values
+
+
+# Explore the Review_location column
+print(df['Review_Location'].value_counts())
+
+
+# count num unique values in the "Review_Location" column
+num_locations = df['Review_Location'].nunique()
+#print num
+print("\nNumber of different values for Review_Location:", num_locations)
+
+
+
+# get the value counts for the "Review_Location" column
+location_counts = df['Review_Location'].value_counts()
+
+# print the list of unique values and their counts
+print("\nReview_Location Summary:")
+for location, count in location_counts.items():
+    print(location, "--", count)
+
+# location
+# shift and right click to copy
+
+
+#  bar chart of the top 10 Review_location values
+df['Review_Location'].value_counts().nlargest(10).plot(kind='bar', figsize=(8,6))
+plt.title('Top 10 Review Locations - Unprocessed Text')
+plt.xlabel('Location')
+plt.ylabel('Frequency')
+plt.show()
+
+# Create a pie chart of the Review_location values
+df['Review_Location'].value_counts().plot(kind='pie', autopct='%1.1f%%', startangle=90, figsize=(8,6))
+plt.title('Review Locations')
+plt.axis('equal')
+plt.show()
+
+
+
+
+
+
+# Group the data by location and count the number of reviews
+grouped = df.groupby('Review_Location')['ID'].count()
+
+# Get the top 15 locations by review count
+top_locations = grouped.sort_values(ascending=False).head(25)
+
+# Create a horizontal bar chart
+fig, ax = plt.subplots(figsize=(10, 6))
+ax.barh(top_locations.index, top_locations.values, color='blue')
+
+# Set the title and axis labels
+ax.set_title('Top 25 Locations by Review Count')
+ax.set_xlabel('Number of Reviews')
+ax.set_ylabel('Location')
+plt.show()
+
+
+random_locations = df['location'].sample(n=20, random_state=42)
+print(random_locations)
+
+
+# more work to be done
+
+# original reference
+total_values = len(df['Review_Location'])
+print("Total values in Review location:", total_values)
+
+# count num unique values in the "Review_Location" column
+num_locations = df['Review_Location'].nunique()
+#print num
+print("\nNumber of different values for Review_Location:", num_locations)
+
+
+#create copy- Location
+df['Location'] = df['Review_Location'].copy()
+
+#counts
+total_values = len(df['Location'])
+print("\nTotal values in Review location:", total_values)
+
+#unique vals counts
+num_locations = df['Location'].nunique()
+#print num
+print("\nNumber of different values for Review_Location:", num_locations)
+
+
+
+#convert to lowercase
+df['Location'] = df['Location'].str.lower()
+
+#counts
+total_values = len(df['Location'])
+print("Total values in Review location:", total_values)
+
+
+#unique vals
+num_locations = df['Location'].nunique()
+#print num
+print("\nNumber of different values for Location:", num_locations)
+
+
+state_dict = {
+    'undisclosed': ['u'],
+    'alabama': ['al','birmingham', 'montgomery', 'mobile', 'huntsville', 'tuscaloosa'],
+    'alaska': ['ak', 'anchorage', 'fairbanks', 'juneau', 'sitka', 'ketchikan'],
+    'arizona': ['az', 'phoenix', 'tucson', 'mesa', 'chandler', 'glendale'],
+    'arkansas': ['ar', 'little rock', 'fort smith', 'fayetteville', 'springdale', 'jonesboro'],
+    'california': ['ca', 'los angeles', 'san diego', 'san jose', 'san francisco', 'fresno'],
+    'colorado': ['co', 'denver', 'colorado springs', 'aurora', 'fort collins', 'lakewood'],
+    'connecticut': ['ct', 'bridgeport', 'new haven', 'hartford', 'stamford', 'waterbury'],
+    'delaware': ['de', 'wilmington', 'dover', 'newark', 'middletown', 'smyrna'],
+    'florida': ['fl', 'miami', 'tampa', 'orlando', 'jacksonville', 'st. petersburg'],
+    'georgia': ['ga','atlanta', 'augusta', 'columbus', 'macon', 'sandy springs'],
+    'hawaii': ['hi', 'honolulu', 'hilo', 'kailua', 'kaneohe', 'mililani town'],
+    'idaho': ['id', 'boise', 'meridian', 'nampa', 'idaho falls', 'pocatello'],
+    'illinois': ['il', 'chicago', 'aurora', 'rockford', 'joliet', 'naperville'],
+    'indiana': ['in', 'indianapolis', 'fort wayne', 'evansville', 'south bend', 'carmel'],
+    'iowa': ['io', 'des moines', 'cedar rapids', 'davenport', 'sioux city', 'iowa city'],
+    'kansas': ['ks', 'wichita', 'overland park', 'kansas city', 'topeka', 'lawrence'],
+    'kentucky': ['ky', 'louisville', 'lexington', 'bowling green', 'owensboro', 'covington'],
+    'louisiana': ['new orleans', 'baton rouge', 'shreveport', 'lafayette', 'lake charles'],
+    'maine': ['me','portland', 'lewiston', 'bangor', 'auburn', 'biddeford'],
+    'maryland': ['md', 'baltimore', 'frederick', 'rockville', 'gaithersburg', 'bowie'],
+    'massachusetts': ['ma','boston', 'worcester', 'springfield', 'lowell', 'cambridge'],
+    'michigan': ['mi','detroit', 'grand rapids', 'warren', 'sterling heights', 'lansing'],
+    'minnesota': ['mn','minneapolis', 'st. paul', 'rochester', 'duluth', 'bloomington'],
+    'mississippi': ['ms', 'jackson', 'gulfport', 'southaven', 'hattiesburg', 'biloxi'],
+    'missouri': ['mo', 'kansas city', 'st. louis', 'springfield', 'independence', 'columbia'],
+    'montana': ['mt', 'billings', 'missoula', 'great falls', 'bozeman', 'butte'],
+    'nebraska': ['ne', 'omaha', 'lincoln', 'bellevue', 'grand island', 'kearney'],
+    'nevada': ['nv', 'las vegas', 'reno', 'henderson', 'north las vegas', 'sparks'],
+    'new hampshire': ['nh', 'manchester', 'nashua', 'concord', 'dover', 'rochester'],
+    'new jersey': ['nj', 'newark', 'jersey city', 'paterson', 'elizabeth', 'edison'],
+    'new mexico': ['nm', 'albuquerque', 'las cruces', 'rio rancho', 'santa fe', 'roswell'],
+    'new york': ['ny','nyc', 'new york', 'buffalo', 'rochester', 'yonkers', 'syracuse'],
+    'north carolina': ['nc','charlotte', 'raleigh', 'greensboro', 'durham', 'winston-salem'],
+    'north dakota': ['nd','fargo', 'bismarck', 'grand forks', 'minot', 'west fargo'],
+    'ohio': ['oh','columbus', 'cleveland', 'cincinnati', 'toledo', 'akron'],
+    'oklahoma': ['ok', 'oklahoma city', 'tulsa', 'norman', 'broken arrow', 'lawton'],
+    'oregon': ['or', 'portland', 'eugene', 'salem', 'gresham', 'hillsboro'],
+    'pennsylvania': ['pa', 'philadelphia', 'pittsburgh', 'allentown', 'erie', 'reading'],
+    'rhode island': ['ri', 'providence', 'warwick', 'cranston', 'pawtucket', 'east providence'],
+    'south carolina': ['sc', 'columbia', 'charleston', 'north charleston', 'mount pleasant', 'rock hill'],
+    'south dakota': ['sd', 'sioux falls', 'rapid city', 'aberdeen', 'watertown', 'brookings'],
+    'tennessee': ['tn','nashville', 'memphis', 'knoxville', 'chattanooga', 'clarksville'],
+    'texas': ['tx', 'houston', 'san antonio', 'dallas', 'austin', 'fort worth'],
+    'utah': ['ut', 'salt lake city', 'west valley city', 'provo', 'west jordan', 'orem'],
+    'vermont': ['vt','burlington', 'south burlington', 'rutland', 'barre', 'montpelier'],
+    'virginia': ['va', 'virginia beach', 'norfolk', 'chesapeake', 'richmond', 'newport news'],
+    'washington': ['wa', 'seattle', 'spokane', 'tacoma', 'vancouver', 'bellevue'],
+    'west virginia': ['wv', 'charleston', 'huntington', 'parkersburg', 'wheeling', 'morgantown'],
+    'wisconsin': ['wi', 'milwaukee', 'madison', 'green bay', 'kenosha', 'racine'],
+    'wyoming': ['wy', 'cheyenne', 'casper', 'gillette', 'laramie', 'sheridan']}
+
+
+
+
+
+# location
+# lower case
+# loops 
+
+# Loop through the 'state' column and replace any variation of a state name with its standardized version
+for key, value in state_dict.items():
+    if len(value) >= 2:
+        df['Location'] = df['Location'].str.replace(f'(?i){key}|{value[1]}', value[0])
+    else:
+        df['Location'] = df['Location'].str.replace(f'(?i){key}', value[0])
+
+
+# count num unique values in the "Review_Location" column
+num_locations = df['Location'].nunique()
+print("\nNumber of different values for Review_Location:", num_locations)
+
+# get the value counts for the "Review_Location" column
+location_counts = df['Location'].value_counts()
+
+# print the list of unique values and their counts
+print("\nReview_Location Summary:")
+for location, count in location_counts.items():
+    print(location, "--", count)
+
+import re
+
+def clean_review_location(df, state_dict):
+    # Convert Review_Location to lowercase and replace non-alphanumeric characters with spaces
+    df['Location'] = df['Location'].apply(lambda x: re.sub(r'[^a-zA-Z0-9\s]', ' ', x.lower()))
+    
+    # Split the words
+    df['Location'] = df['Location'].apply(lambda x: x.split())
+    
+    # Loop through the words and replace any city names with their corresponding state
+    for i in range(len(df)):
+        location = df.loc[i, 'Location']
+        for key, value in state_dict.items():
+            if any(city.lower() in location for city in value[1]):
+                df.loc[i, 'Location'] = key
+                break
+                
+    # Join the words back together
+    df['Location'] = df['Location'].apply(lambda x: ' '.join(x))
+    
+    # Drop the Review_Location column
+    df.drop('Location', axis=1, inplace=True)
+    
+    return df
+df = clean_review_location(df, state_dict)
+
+
+
+#I have a dictionary called state_dict that contains information about the 50 states. the keys are the state names, and the key pairs are the abbreviations and top five cities for each state. in my data frame I have text that needs to be sorted based on what state it belongs to in the state dict. I need to search every value for the column â€˜Locationâ€™ Every location in the data frame needs to be cross referenced with every single string in the state_dict dictionary. if the location is a match to any of the strings, that location needs to be renamed to the corresponding key. For example, atlanta would be renamed to georgia.write a function that loops through all Location and tries to match it with a string in state_dict. If it is a match, change it to the key name. if it is not a match, return the original value. 
+
+
+
+
+# Define a function to check if a location string contains a state or city in either the state_dict or city_state_dict
+def replace_location(loc):
+    # Convert the location string to lower
+    loc = loc.lower()
+    
+    # Check if the location is already a state abbreviation
+    if loc in state_dict:
+        return loc
+    elif loc in city_state_dict:
+        return city_state_dict[loc]
+    else:
+        # Use regex to check if the location string contains a city/state or city/country combination
+        match = re.search(r'\b([\w\s]+),\s*([A-Za-z]{2}|\w+\s[A-Za-z]+)\b', loc)
+        
+        if match:
+            # If the location string contains a city/state or city/country combination, check if the state/country is in the state_dict
+            state = match.group(2).strip().title()
+            if state in state_dict:
+                # If the state/country is in the state_dict, return the state abbreviation
+                return state_dict[state][0]
+            elif state in city_state_dict:
+                # If the state/country is in the city_state_dict, return the city-state abbreviation
+                return city_state_dict[state]
+            else:
+                # If the state/country is not in either dict, return the original location string
+                return loc
+        else:
+            # If the location string does not contain a city/state or city/country combination, return the original location string
+            return loc
+
+# Loop through Review_Location and replace any state or city with its abbreviation
+df['Location'] = df['Review_Location'].apply(replace_location)
+
+
+
+#  bar chart of the top 10 Review_location values
+df['Location'].value_counts().nlargest(20).plot(kind='bar', figsize=(8,6))
+plt.title('Top 10 Review Locations-')
+plt.xlabel('Location')
+plt.ylabel('Frequency')
+plt.show()
+
+
+# count num unique values in the "Review_Location" column
+num_locations = df['Location'].nunique()
+#print num
+print("\nNumber of different values for Review_Location:", num_locations)
+
+
+# get the value counts for the "Review_Location" column
+location_counts = df['Location'].value_counts()
+
+# print the list of unique values and their counts
+print("\nReview_Location Summary:")
+for location, count in location_counts.items():
+    print(location, "--", count)
+
+
+
+def replace_location(loc):
+    loc = loc.lower()
+    if loc in state_dict:
+        return loc
+    elif loc in city_state_dict:
+        return city_state_dict[loc]
+    else:
+        match = re.search(r'\b([\w\s]+),\s*([A-Za-z]{2}|\w+\s[A-Za-z]+)\b', loc)
+        if match:
+            state = match.group(2).strip().title()
+            if state in state_dict:
+                return state_dict[state][0]
+            elif state in city_state_dict:
+                return city_state_dict[state]
+            elif state in state_dict.values():
+                return [k for k, v in state_dict.items() if v == state][0]
+            else:
+                return loc
+        else:
+            return loc
+        
+                
+# Loop through Review_Location and replace any state or city with its abbreviation
+df['Location'] = df['Review_Location'].apply(replace_location)
+
+# Check if any locations in the location column are not found in the state_dict
+for loc in df['location']:
+    if loc not in state_dict.keys():
+        print(f"Location '{loc}' not found in state_dict")
+    else:
+        df['location'] = df['location'].replace(loc, state_dict[loc][0])
+
+
+
+##################3333333333333333333333333333333333333
+
+
+# daily microfoliant: powder
+# all reviews
+daily_microfoliant_df = df[df['Product'].str.contains("Daily Microfoliant")]
+
+# Filter the reviews in the filtered DataFrame to only include reviews that contain the word "powder"
+pattern = re.compile(r"\bpowder\b", re.IGNORECASE)
+filtered_reviews = [review for review in daily_microfoliant_df['Review_Text'] if pattern.search(review)]
+
+# Print the filtered reviews
+for i, review in enumerate(filtered_reviews, start=1):
+    print(f"Review {i}: {review}\n")
+
+# use regex to find reviews with powder
+# shortened sentences
+
+
+# Filter reviews for "Daily Microfoliant"
+daily_microfoliant_df = df[df['Product'] == 'Daily Microfoliant']
+
+# Filter the reviews in the filtered DataFrame to only include reviews that contain the word "powder"
+pattern = re.compile(r"\bpowder\b", re.IGNORECASE)
+filtered_reviews = [review for review in daily_microfoliant_df['Review_Text'] if pattern.search(review)]
+
+# Print the filtered reviews
+for i, review in enumerate(filtered_reviews, start=1):
+    # Find the index of the word "powder"
+    index = pattern.search(review).start()
+
+    # Extract the 10 words before and after "powder"
+    words = re.findall(r"\b\w+\b", review[max(0, index - 70):index + 60])
+    words = " ".join(words)
+    print(f"Review {i}: {words}\n")
+
+# sensitive
+# Filter reviews for "Daily Microfoliant"
+daily_microfoliant_df = df[df['Product'] == 'Daily Microfoliant']
+
+# Filter the reviews in the filtered DataFrame to only include reviews that contain the word "powder"
+pattern = re.compile(r"\bsensitive\b", re.IGNORECASE)
+filtered_reviews = [review for review in daily_microfoliant_df['Review_Text'] if pattern.search(review)]
+
+# Print the filtered reviews
+for i, review in enumerate(filtered_reviews, start=1):
+    # Find the index of the word 
+    index = pattern.search(review).start()
+
+    # Extract the 10 words before and after 
+    words = re.findall(r"\b\w+\b", review[max(0, index - 70):index + 60])
+    words = " ".join(words)
+    print(f"Review {i}: {words}\n")
+    
+    
+  
+# see bigrams of sensitive
+
+
+# texture
+# Filter reviews for "Daily Microfoliant"
+
+
+# Apply the clean_text function to the Review_Text column to create a new clean_review_text column
+daily_microfoliant_df['clean_review_text'] = daily_microfoliant_df['Review_Text'].apply(clean_text)
+daily_microfoliant_df = df[df['Product'] == 'Daily Microfoliant']
+
+# Filter the reviews in the filtered DataFrame to only include reviews that contain the word "powder"
+pattern = re.compile(r"\btexture\b", re.IGNORECASE)
+filtered_reviews = [review for review in daily_microfoliant_df['Review_Text'] if pattern.search(review)]
+
+# Print the filtered reviews
+for i, review in enumerate(filtered_reviews, start=1):
+    # Find the index of the word 
+    index = pattern.search(review).start()
+
+    # Extract the 10 words before and after 
+    words = re.findall(r"\b\w+\b", review[max(0, index - 70):index + 60])
+    words = " ".join(words)
+    print(f"Review {i}: {words}\n")
+
+    
+    
+# see bigrams of 
+
+
+# gentle
+# Filter reviews for "Daily Microfoliant"
+
+
+# Apply the clean_text function to the Review_Text column to create a new clean_review_text column
+daily_microfoliant_df['clean_review_text'] = daily_microfoliant_df['Review_Text'].apply(clean_text)
+daily_microfoliant_df = df[df['Product'] == 'Daily Microfoliant']
+
+# Filter the reviews in the filtered DataFrame to only include reviews that contain the word "powder"
+pattern = re.compile(r"\bgentle\b", re.IGNORECASE)
+filtered_reviews = [review for review in daily_microfoliant_df['Review_Text'] if pattern.search(review)]
+
+# Print the filtered reviews
+for i, review in enumerate(filtered_reviews, start=1):
+    # Find the index of the word 
+    index = pattern.search(review).start()
+
+    # Extract the 10 words before and after 
+    words = re.findall(r"\b\w+\b", review[max(0, index - 70):index + 60])
+    words = " ".join(words)
+    print(f"Review {i}: {words}\n")
+
+    
+    
+# see bigrams of 
+
+
+# create a function
+
+def filter_reviews(df, product, keyword):
+    # Filter reviews for specified product
+    product_df = df[df['Product'] == product]
+
+    # Apply the clean_text function to the Review_Text column to create a new clean_review_text column
+    product_df['clean_review_text'] = product_df['Review_Text'].apply(clean_text)
+
+    # Filter the reviews in the filtered DataFrame to only include reviews that contain the keyword
+    pattern = re.compile(r"\b{}\b".format(keyword), re.IGNORECASE)
+    filtered_reviews = [review for review in product_df['Review_Text'] if pattern.search(review)]
+
+    return filtered_reviews
+
+
+daily_microfoliant_df = df[df['Product'] == 'Daily Microfoliant']
+filtered_reviews = filter_reviews(daily_microfoliant_df, 'Daily Microfoliant', 'gentle')
+
+pattern = re.compile(r"\bgentle\b", re.IGNORECASE)
+
+# Print the filtered reviews
+for i, review in enumerate(filtered_reviews, start=1):
+    # Find the index of the word
+    index = pattern.search(review).start()
+
+    # Extract the 10 words before and after
+    words = re.findall(r"\b\w+\b", review[max(0, index - 70):index + 60])
+    words = " ".join(words)
+    print(f"Review {i}: {words}\n")
+
+
+ # daily superfoliant #
+      # dry, smell, smooth, intensive moisture
+
+daily_superfoliant_df = df[df['Product'] == 'Daily Superfoliant']
+filtered_reviews = filter_reviews(daily_superfoliant_df, 'Daily Superfoliant', 'dry')
+
+pattern = re.compile(r"\bdry\b", re.IGNORECASE)
+
+# Print the filtered reviews
+for i, review in enumerate(filtered_reviews, start=1):
+    # Find the index of the word
+    index = pattern.search(review).start()
+
+    # Extract the 10 words before and after
+    words = re.findall(r"\b\w+\b", review[max(0, index - 30):index + 30])
+    words = " ".join(words)
+    print(f"Review {i}: {words}\n")
+
+    
+    
+    
+# dry is popular word but it seems like it is NOT drying 
+# search "dry skin" bigrams from the entire sentence, 8 words before 8 after
+
+
+
+# smell, smooth, intensive moisture
+
+daily_superfoliant_df = df[df['Product'] == 'Daily Superfoliant']
+filtered_reviews = filter_reviews(daily_superfoliant_df, 'Daily Superfoliant', 'smell')
+
+pattern = re.compile(r"\bsmell\b", re.IGNORECASE)
+
+# Print the filtered reviews
+for i, review in enumerate(filtered_reviews, start=1):
+    # Find the index of the word
+    index = pattern.search(review).start()
+
+    # Extract the 10 words before and after
+    words = re.findall(r"\b\w+\b", review[max(0, index - 10):index + 25])
+    words = " ".join(words)
+    print(f"Review {i}: {words}\n")
+
+    
+    
+    
+# dry is popular word but it seems like it is NOT drying 
+
+
+
+# bigrams for smell 
+
+# Filter reviews for "Daily Superfoliant"
+daily_superfoliant_df = df[df['Product'] == 'Daily Superfoliant']
+
+# Filter the reviews in the filtered DataFrame to only include reviews that contain the word "smell"
+pattern = re.compile(r"\bsmells*\b", re.IGNORECASE)
+filtered_reviews = [review for review in daily_superfoliant_df['clean_review_text'] if pattern.search(review)]
+
+# Find bigrams with the word "smell"
+smell_bigrams = {}
+for review in filtered_reviews:
+    # Find the index of the word "smell"
+    index = pattern.search(review).start()
+    
+    # Extract the adjacent words
+    words = re.findall(r"\b\w+\b", review[max(0, index - 10):index + 50])
+    for i in range(len(words) - 1):
+        if words[i].lower() == 'smell':
+            bigram = (words[i], words[i+1])
+            if bigram in smell_bigrams:
+                smell_bigrams[bigram] += 1
+            else:
+                smell_bigrams[bigram] = 1
+
+# Print the top 10 smell bigrams with total counts
+sorted_bigrams = sorted(smell_bigrams.items(), key=lambda x: x[1], reverse=True)
+for bigram, count in sorted_bigrams[:10]:
+    print(f"{bigram}: {count}")
+
+# went back to add like to stopwords
+
+ # daily superfoliant #
+      #  smooth, intensive moisture
+
+daily_superfoliant_df = df[df['Product'] == 'Daily Superfoliant']
+filtered_reviews = filter_reviews(daily_superfoliant_df, 'Daily Superfoliant', 'smooth')
+
+pattern = re.compile(r"\bsmooth\b", re.IGNORECASE)
+
+# Print the filtered reviews
+for i, review in enumerate(filtered_reviews, start=1):
+    # Find the index of the word
+    index = pattern.search(review).start()
+
+    # Extract the 10 words before and after
+    words = re.findall(r"\b\w+\b", review[max(0, index - 25):index + 25])
+
+    words = " ".join(words)
+    print(f"Review {i}: {words}\n")
+
+    
+    
+    
+# dry is popular word but it seems like it is NOT drying 
+# search "dry skin" bigrams from the entire sentence, 8 words before 8 after
+
+
+
+# bigrams for smooth
+
+# Filter reviews for "Daily Superfoliant"
+daily_superfoliant_df = df[df['Product'] == 'Daily Superfoliant']
+
+# Filter the reviews in the filtered DataFrame to only include reviews that contain the word "smell"
+pattern = re.compile(r"\bsmooth\b", re.IGNORECASE)
+filtered_reviews = [review for review in daily_superfoliant_df['clean_review_text'] if pattern.search(review)]
+
+# Find bigrams with the word "smell"
+smell_bigrams = {}
+for review in filtered_reviews:
+    # Find the index of the word "smell"
+    index = pattern.search(review).start()
+    
+    # Extract the adjacent words
+    words = re.findall(r"\b\w+\b", review[max(0, index - 10):index + 50])
+    for i in range(len(words) - 1):
+        if words[i].lower() == 'smooth':
+            bigram = (words[i], words[i+1])
+            if bigram in smell_bigrams:
+                smell_bigrams[bigram] += 1
+            else:
+                smell_bigrams[bigram] = 1
+
+# Print the top 10 smell bigrams with total counts
+sorted_bigrams = sorted(smell_bigrams.items(), key=lambda x: x[1], reverse=True)
+for bigram, count in sorted_bigrams[:10]:
+    print(f"{bigram}: {count}")
+
+# went back to add like to stopwords
+
+
+
+ # daily superfoliant #
+      # intensive moisture
+
+daily_superfoliant_df = df[df['Product'] == 'Daily Superfoliant']
+filtered_reviews = filter_reviews(daily_superfoliant_df, 'Daily Superfoliant', 'intensive moisture')
+
+pattern = re.compile(r"\bintensive moisture\b", re.IGNORECASE)
+
+# Print the filtered reviews
+for i, review in enumerate(filtered_reviews, start=1):
+    # Find the index of the word
+    index = pattern.search(review).start()
+
+    # Extract the 10 words before and after
+    words = re.findall(r"\b\w+\b", review[max(0, index - 75):index + 150])
+
+    words = " ".join(words)
+    print(f"Review {i}: {words}\n")
+
+    
+    
+    
+# dry is popular word but it seems like it is NOT drying 
+# search "dry skin" bigrams from the entire sentence, 8 words before 8 after
+
+#cleanser, using with intensive moisture balance
+
+
+# bigrams for intensive
+
+# Filter reviews for "Daily Superfoliant"
+daily_superfoliant_df = df[df['Product'] == 'Daily Superfoliant']
+
+# Filter the reviews in the filtered DataFrame to only include reviews that contain the word "smell"
+pattern = re.compile(r"\bintensive\b", re.IGNORECASE)
+filtered_reviews = [review for review in daily_superfoliant_df['clean_review_text'] if pattern.search(review)]
+
+# Find bigrams with the word "smell"
+smell_bigrams = {}
+for review in filtered_reviews:
+    # Find the index of the word "smell"
+    index = pattern.search(review).start()
+    
+    # Extract the adjacent words
+    words = re.findall(r"\b\w+\b", review[max(0, index - 10):index + 50])
+    for i in range(len(words) - 1):
+        if words[i].lower() == 'intensive':
+            bigram = (words[i], words[i+1])
+            if bigram in smell_bigrams:
+                smell_bigrams[bigram] += 1
+            else:
+                smell_bigrams[bigram] = 1
+
+# Print the top 10 smell bigrams with total counts
+sorted_bigrams = sorted(smell_bigrams.items(), key=lambda x: x[1], reverse=True)
+for bigram, count in sorted_bigrams[:10]:
+    print(f"{bigram}: {count}")
+
+
+# bigrams for moisture
+
+# Filter reviews for "Daily Superfoliant"
+daily_superfoliant_df = df[df['Product'] == 'Daily Superfoliant']
+
+# Filter the reviews in the filtered DataFrame to only include reviews that contain the word "smell"
+pattern = re.compile(r"\bmoisture\b", re.IGNORECASE)
+filtered_reviews = [review for review in daily_superfoliant_df['clean_review_text'] if pattern.search(review)]
+
+# Find bigrams with the word "smell"
+smell_bigrams = {}
+for review in filtered_reviews:
+    # Find the index of the word "smell"
+    index = pattern.search(review).start()
+    
+    # Extract the adjacent words
+    words = re.findall(r"\b\w+\b", review[max(0, index - 10):index + 50])
+    for i in range(len(words) - 1):
+        if words[i].lower() == 'moisture':
+            bigram = (words[i], words[i+1])
+            if bigram in smell_bigrams:
+                smell_bigrams[bigram] += 1
+            else:
+                smell_bigrams[bigram] = 1
+
+# Print the top 10 smell bigrams with total counts
+sorted_bigrams = sorted(smell_bigrams.items(), key=lambda x: x[1], reverse=True)
+for bigram, count in sorted_bigrams[:10]:
+    print(f"{bigram}: {count}")
+
+# moisture cleanser, moisture balance
+
+#hydromasque exfoliant: finger, scent/smell, finger rubbed, take minute
+# scent
+
+hydro_df = df[df['Product'] == 'Hydro Masque Exfoliant']
+filtered_reviews = filter_reviews(hydro_df, 'Hydro Masque Exfoliant', 'scent')
+
+pattern = re.compile(r"\bscent\b", re.IGNORECASE)
+
+# Print the filtered reviews
+for i, review in enumerate(filtered_reviews, start=1):
+    # Find the index of the word
+    index = pattern.search(review).start()
+
+# Extract the 10 words before and after
+    words = re.findall(r"\b\w+\b", review[max(0, index - 10):index + 50])
+
+    words = " ".join(words)
+    row_number = hydro_df[hydro_df['Review_Text'] == review].index[0] # Get the index of the row that contains the review
+    print(f"Review {i} (ID: {row_number}): {words}\n")
+    
+    
+    
+    
+    # its showing duplicate rows- 706 like 80 times
+    
+# dry is popular word but it seems like it is NOT drying 
+# search "dry skin" bigrams from the entire sentence, 8 words before 8 after
+
+#cleanser, using with intensive moisture balance
+
+
+# bigrams for smell/scent
+
+#df.drop_duplicates(subset=['Review_Title', 'Review_Text'], inplace=True)
+#duplicates = df[df['clean_review_text'].duplicated()]
+#print(duplicates)
+
+
+# Filter the reviews in the filtered DataFrame to only include reviews that contain the word "smell"
+pattern = re.compile(r"\bsmell\b", re.IGNORECASE)
+filtered_reviews = [review for review in hydro_df['clean_review_text'] if pattern.search(review)]
+
+# Find bigrams with the word "smell"
+smell_bigrams = {}
+for review in filtered_reviews:
+    # Find the index of the word "smell"
+    index = pattern.search(review).start()
+    
+    # Extract the adjacent words
+    words = re.findall(r"\b\w+\b", review[max(0, index - 10):index + 50])
+    for i in range(len(words) - 1):
+        if words[i].lower() == 'smell':
+            bigram = (words[i], words[i+1])
+            if bigram in smell_bigrams:
+                smell_bigrams[bigram] += 1
+            else:
+                smell_bigrams[bigram] = 1
+
+# Print the top 10 smell bigrams with total counts
+sorted_bigrams = sorted(smell_bigrams.items(), key=lambda x: x[1], reverse=True)
+for bigram, count in sorted_bigrams[:10]:
+    print(f"{bigram}: {count}")
+
+
+
+
+#MV thermofoliant: 
+#feel, smooth, warming sensation/warm 
+
+
+# Filter the DataFrame to only include rows where the Product column contains "Daily Microfoliant"
+daily_microfoliant_df = df[df['Product'].str.contains("Daily Microfoliant")]
+
+# Define a function to extract the tagged words
+def tag_text(text):
+    # Tokenize the text
+    tokens = nltk.word_tokenize(text)
+    # Tag the words with their part-of-speech
+    tagged_words = nltk.pos_tag(tokens)
+    # Extract the adjectives
+    adjectives = [word for word, pos in tagged_words if pos.startswith('JJ')]
+    return adjectives
+
+
+# needs to be copy of df to modify
+daily_microfoliant_df = df[df['Product'].str.contains("Daily Microfoliant")].copy()
+daily_microfoliant_df['tagged_text'] = daily_microfoliant_df['clean_review_text'].apply(tag_text)
+
+# Flatten the list of tagged words into a single list
+tagged_words = [word for words in daily_microfoliant_df['tagged_text'] for word in words]
+
+# Count the frequency of each tagged word
+word_freq = nltk.FreqDist(tagged_words)
+
+# Print the top 10 most common adjectives
+print("Top 10 most common adjectives with 'powder':")
+for word, freq in word_freq.most_common(10):
+    print(f"{word}: {freq}")
+
+
+
+#topic modeling
+from gensim import corpora, models
+from nltk.corpus import stopwords
+
+## Daily Microfoliant
+# Daily Superfoliant
+# Hydro Masque exfoliant
+# Multivitamin Thermafoliant # remove names bc overweighted
+
+
+# Apply the clean_text function to the Review_Text column
+df['clean_review_text'] = df['Review_Text'].apply(clean_text)
+
+# Define stop words
+stop_words = stopwords.words('english')
+
+# Add additional stop words
+additional_stop_words = ['new', 'use', 'though','ago', 'definitely',
+                         'also', 'sure', 'let', 'get', 'used', 'using', 
+                         'well', 'make', 'made', 'makes', 'hydro', 'multivitamin', 
+                         'thermafoliant', ' masque', 'microfoliant', 'superfoliant', 'exfoliant', 'product']
+stop_words.extend(additional_stop_words)
+
+# Tokenize the documents
+docs = [doc.lower().split() for doc in df['clean_review_text']]
+
+# Remove stop words and words that appear only once
+docs = [[word for word in doc if word not in stop_words] for doc in docs]
+from collections import defaultdict
+frequency = defaultdict(int)
+for doc in docs:
+    for token in doc:
+        frequency[token] += 1
+docs = [[token for token in doc if frequency[token] > 1] for doc in docs]
+
+# Create dictionary and corpus
+dictionary = corpora.Dictionary(docs)
+corpus = [dictionary.doc2bow(doc) for doc in docs]
+
+# Train LDA model
+lda_model = models.LdaModel(corpus=corpus, 
+                            id2word=dictionary,
+                            num_topics=10, 
+                            passes=10, 
+                            random_state=42)
+
+# Print the topics
+for idx, topic in lda_model.print_topics(-1):
+    print('Topic {}: {}\n'.format(idx+1, topic))
+
+
+# topic modeling by product 
+
+from nltk.corpus import stopwords
+from nltk.tokenize import RegexpTokenizer
+from nltk.stem import WordNetLemmatizer
+from gensim.corpora.dictionary import Dictionary
+from gensim.models.ldamodel import LdaModel
+
+# initialize the lemmatizer
+lemmatizer = WordNetLemmatizer()
+
+# define a function to preprocess the text
+def preprocess_text(text):
+    # convert the text to lowercase
+    text = text.lower()
+    # remove the punctuation
+    tokenizer = RegexpTokenizer(r'\w+')
+    text = tokenizer.tokenize(text)
+    # remove stop words
+    text = [word for word in text if not word in stop_words]
+    # lemmatize the words
+    text = [lemmatizer.lemmatize(word) for word in text]
+    return text
+
+# preprocess the review text
+df['cleaned_review_text'] = df['Review_Text'].apply(preprocess_text)
+
+# create a dictionary representation of the documents
+dictionary = Dictionary(df['cleaned_review_text'])
+
+# filter out words that occur less than 5 documents, or more than 50% of the documents
+dictionary.filter_extremes(no_below=5, no_above=0.5)
+
+# create a bag-of-words representation of the corpus
+corpus = [dictionary.doc2bow(doc) for doc in df['cleaned_review_text']]
+
+# train the LDA model
+product_list = df['Product'].unique()
+for product in product_list:
+    product_df = df[df['Product']==product]
+    product_corpus = [dictionary.doc2bow(doc) for doc in product_df['cleaned_review_text']]
+    lda_model = LdaModel(corpus=product_corpus, id2word=dictionary, num_topics=3, passes=10)
+    # print the topics for the product
+    print('Topics for {}:'.format(product))
+    for idx, topic in lda_model.print_topics(-1):
+        print('Topic {}: {}\n'.format(idx+1, topic))
+
+
+# verified buyer #
+
+# Explore the Review_location column
+print(df['Verified_Buyer'].value_counts()) # most are not verified
+
+
+# Count number of verifbbied and non-verified buyers
+buyer_counts = df['Verified_Buyer'].value_counts()
+
+# Create pie chart
+plt.pie(buyer_counts, labels=buyer_counts.index, autopct='%1.1f%%')
+
+# Set title
+plt.title('Verified Buyers')
+
+# Show plot
+plt.show()
+
+
+
+
+
+
+
+
