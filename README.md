@@ -1,7 +1,6 @@
 # Dermalogica-NLP
 
-In this analysis we explore a data set of four Dermalogica product customer reviews. Methods used include bigram extraction, feature extraction, topic
-modeling, word tagging, sentiment analysis and word cloud generation. 
+In this analysis a data set of four Dermalogica skin care product customer reviews was explored. Methods used include bigram extraction, feature extraction, topic modeling, word tagging, sentiment analysis and word cloud generation. 
 
 Key takeaways:
 
